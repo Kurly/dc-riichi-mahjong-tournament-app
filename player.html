@@ -355,7 +355,9 @@
             let t = p.tables[selectedRound];
             if(t) {
                 if(!tables[t]) tables[t] = [];
-                tables[t].push({name:p.name, id:p.id});
+                // Grab the score for this specific round if it has been submitted
+                let roundScore = p.scores ? p.scores[selectedRound] : undefined;
+                tables[t].push({name:p.name, id:p.id, score: roundScore});
             }
         });
 
@@ -365,9 +367,26 @@
         Object.keys(tables).sort((a,b)=>a-b).forEach(t => {
             let pHTML = "";
             tables[t].forEach(p => {
-               pHTML += `<div class="tp-name"><span class="tp-id">[${p.id.replace(/^P/i,'')}]</span> ${p.name}</div>`;
+               let scoreDisplay = "";
+               if (p.score !== undefined && p.score !== "") {
+                   let v = parseFloat(p.score);
+                   let scoreClass = v >= 0 ? 'pos' : 'neg';
+                   let sign = v > 0 ? '+' : '';
+                   // margin-left: auto pushes the score to the far right of the grid cell
+                   scoreDisplay = `<span class="${scoreClass}" style="margin-left:auto;">${sign}${v.toFixed(1)}</span>`;
+               }
+               
+               // Added width:100% so the flexbox pushes the score perfectly to the edge
+               pHTML += `<div class="tp-name" style="width:100%;">
+                            <span class="tp-id">[${p.id.replace(/^P/i,'')}]</span> 
+                            ${p.name} 
+                            ${scoreDisplay}
+                         </div>`;
             });
-            html += `<div class="table-group searchable-table-card"><div class="table-num">Table ${t}</div><div class="table-players">${pHTML}</div></div>`;
+            html += `<div class="table-group searchable-table-card">
+                        <div class="table-num">Table ${t}</div>
+                        <div class="table-players">${pHTML}</div>
+                     </div>`;
         });
         container.innerHTML = html;
     }
