@@ -214,6 +214,7 @@
         <div class="score-row leftover-row">
           <span class="player-label">Leftover / Riichi Sticks</span>
           <input type="number" id="valLeftover" class="score-val" value="" placeholder="0" inputmode="numeric" pattern="\d*" oninput="checkSum()">
+          <button type="button" class="btn-icon-orange" onclick="toggleMinus('valLeftover')" style="margin-left: 5px; padding: 10px;">[+/-]</button>
         </div>
         <div id="chkSumDisplay" class="calc-box">Start entering scores...</div>
         <button class="btn btn-green" id="btnSubmitScore" onclick="actionSubmitScore()" style="margin-top:20px;">Submit Score</button>
@@ -408,10 +409,26 @@
         
         if(ps.error) { div.innerText = "Error: " + ps.error; btn.disabled = true; return; }
         
+        let unscoredCount = 0;
+        let currentRound = ps.nextRound - 1;
+        if (currentRound > 0 && DATA.allGames[currentRound]) {
+            unscoredCount = DATA.allGames[currentRound].filter(g => !g.isScored).length;
+        }
+        
         if(ps.nextRound > ps.totalRounds) {
             div.innerHTML = `Tournament Complete (${ps.totalRounds} Rounds)`;
             btn.disabled = true;
             btn.innerText = "Tournament Finished";
+        } else if (unscoredCount > 0) {
+            let info = `Next: <b>Round ${ps.nextRound}</b><br>Mode: <span style="color:#2980b9">${(s.pairingMode||"scramble").toUpperCase()}</span>`;
+            if (s.topCutEnabled === "true") {
+                let rInfo = s.topCutRound > 0 ? ` (After R${s.topCutRound})` : "";
+                info += `<br>Top Cut: <span style="color:#e67e22">Active (Top ${s.topCutSize}${rInfo})</span>`;
+            }
+            info += `<br><br><span style="color:#e74c3c; font-weight:bold;">⚠️ Waiting on ${unscoredCount} table(s) from Round ${currentRound}</span>`;
+            div.innerHTML = info;
+            btn.disabled = true;
+            btn.innerText = `Waiting for Scores`;
         } else {
             let info = `Next: <b>Round ${ps.nextRound}</b><br>Mode: <span style="color:#2980b9">${(s.pairingMode||"scramble").toUpperCase()}</span>`;
             if (s.topCutEnabled === "true") {
@@ -451,7 +468,7 @@
         google.script.run.withSuccessHandler(d => { DATA = d; renderAll(); hideBusy(); }).getInitialAdminData();
     }
     
-    // NEW: Lightweight refresh for scoring only
+ // NEW: Lightweight refresh for scoring only
     function refreshScoringOnly() {
         showBusy("Refreshing Scores...");
         google.script.run.withSuccessHandler(d => {
@@ -459,6 +476,7 @@
             DATA.scoreLog = d.scoreLog;
             renderGameSelect();
             renderScoreLog();
+            renderPairingStatus(); // Added to unlock the pairings button dynamically
             hideBusy();
         }).getScoringUpdateData();
     }
@@ -490,12 +508,17 @@
         }).withFailureHandler(e => { alert(e); hideBusy(); }).saveScores(payload);
     }
 
-    function actionGenerateRound() {
+function actionGenerateRound() {
         const buckets = document.getElementById('bucketSelect').value || 1;
         if(!confirm(`Generate Round ${DATA.pairingState.nextRound}?`)) return;
         
         showBusy("Generating...");
         google.script.run.withSuccessHandler(res => {
+            if (res.success === false) {
+                alert(res.message);
+                hideBusy();
+                return;
+            }
             alert(res.message);
             refreshAndRender();
         }).generateNextRound(buckets);
@@ -643,6 +666,7 @@
         sel.disabled = false;
         document.getElementById('scoreArea').style.display = 'none';
     }
+    
     function renderScoreForm() {
         const r = document.getElementById('selRound').value;
         const gid = document.getElementById('selGame').value;
@@ -660,7 +684,8 @@
             ['p1','p2','p3','p4'].forEach(k => {
                let p = game[k];
                let val = isScored ? scores[k] : "";
-               html += `<div class="score-row"><span class="player-label">${p.name} <span class="id-tag">(${p.id})</span></span><input type="hidden" id="pid_${k}" value="${p.id}"><input type="number" id="val_${k}" class="score-val" value="${val}" placeholder="Pts" oninput="checkSum()"></div>`;
+               // Added the [+/-] button here
+               html += `<div class="score-row"><span class="player-label">${p.name} <span class="id-tag">(${p.id})</span></span><input type="hidden" id="pid_${k}" value="${p.id}"><input type="number" id="val_${k}" class="score-val" value="${val}" placeholder="Pts" oninput="checkSum()"><button type="button" class="btn-icon-orange" onclick="toggleMinus('val_${k}')" style="margin-left: 5px; padding: 10px;">[+/-]</button></div>`;
             });
             document.getElementById('scoreRows').innerHTML = html;
             document.getElementById('valLeftover').value = isScored ? scores.leftover : "";
@@ -668,6 +693,16 @@
             hideBusy();
         }).checkIfScored(r, gid, game.p1.id, game.p2.id, game.p3.id, game.p4.id);
     }
+    
+    // New function to handle the minus toggle
+    function toggleMinus(inputId) {
+      const inputField = document.getElementById(inputId);
+      if (inputField && inputField.value !== "") {
+        inputField.value = inputField.value * -1;
+        checkSum();
+      }
+    }
+
     function checkSum() {
         const start = parseFloat(DATA.settings.startPoints) || 30000;
         const target = start * 4;

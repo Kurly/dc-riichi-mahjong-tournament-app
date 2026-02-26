@@ -480,6 +480,16 @@ function generateNextRound(bucketCount) {
   
   const state = getPairingState();
   const round = state.nextRound;
+
+  // --- NEW: Block generation if previous round is missing scores ---
+  const allGames = getAllGamesData();
+  const currentRound = round - 1;
+  if (currentRound > 0 && allGames[currentRound]) {
+    const unscored = allGames[currentRound].filter(g => !g.isScored);
+    if (unscored.length > 0) {
+      return { success: false, message: `Cannot generate round. ${unscored.length} table(s) are missing scores in Round ${currentRound}.` };
+    }
+  }
   let players = getPlayers(); 
   while(players.length % 4 !== 0) players.push({ id: "BYE", name: "BYE" });
   
