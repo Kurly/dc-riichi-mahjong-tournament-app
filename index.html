@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { background: #f0f2f5; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .box { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; max-width: 350px; width: 100%; }
+    h1 { color: #2c3e50; margin-bottom: 30px; }
+    .btn { display: block; width: 100%; padding: 15px; margin-bottom: 15px; border: none; border-radius: 8px; font-size: 1.1em; font-weight: bold; cursor: pointer; text-decoration: none; box-sizing: border-box; }
+    .btn-admin { background: #2c3e50; color: white; }
+    .btn-player { background: #3498db; color: white; }
+    .btn:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <? var url = ScriptApp.getService().getUrl(); ?>
+  <div class="box">
+    <h1>🀄 Mahjong Portal</h1>
+    <a href="<?= url ?>?portal=player" class="btn btn-player">Player View</a>
+    <a href="<?= url ?>?portal=admin" class="btn btn-admin">Admin Panel</a>
+  </div>
+</body>
+</html>

@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f7f6; margin: 0; padding: 15px; color: #333; }
+    .navbar { display: flex; background: #2c3e50; padding: 5px; border-radius: 50px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow-x: auto; }
+    .nav-btn { flex: 1; padding: 10px 15px; border: none; background: transparent; color: #bdc3c7; cursor: pointer; border-radius: 40px; font-weight: bold; transition: 0.3s; white-space: nowrap; font-size: 0.9em; }
+    .nav-btn.active { background: #3498db; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
+    .tab-view { display: none; animation: slideUp 0.3s ease-out; }
+    .tab-view.active { display: block; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    h2 { margin: 0 0 15px 0; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; color: #2c3e50; font-size: 1.3em; }
+    label { display: block; font-weight: 600; margin-bottom: 5px; color: #555; font-size: 0.9em; }
+    input, select, textarea { width: 100%; padding: 12px; border: 2px solid #eee; border-radius: 8px; font-size: 16px; box-sizing: border-box; font-family: inherit; margin-bottom: 15px; transition: border 0.3s; }
+    .btn { width: 100%; padding: 14px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 1em; margin-top: 5px; text-decoration: none; display: inline-block; text-align: center; box-sizing: border-box; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-blue { background: #3498db; color: white; }
+    .btn-green { background: #2ecc71; color: white; }
+    .btn-red { background: #e74c3c; color: white; }
+    .btn-orange { background: #e67e22; color: white; }
+    .btn-icon-red { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s; }
+    .btn-icon-orange { background: #fff3e0; color: #e67e22; border: 1px solid #ffe0b2; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s; margin-right: 5px; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+    .data-table th { text-align: left; padding: 8px; color: #7f8c8d; border-bottom: 2px solid #eee; }
+    .data-table td { padding: 12px 8px; border-bottom: 1px solid #f9f9f9; vertical-align: middle; }
+    .score-row { display: flex; flex-direction: row; align-items: center; background: #f8f9fa; padding: 12px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #eee; }
+    .player-label { flex: 1; font-weight: 700; font-size: 1.1em; color: #2c3e50; margin-right: 10px; line-height: 1.2; }
+    .id-tag { display: block; font-size: 0.75em; color: #999; font-weight: normal; }
+    .score-val { width: 110px !important; text-align: center; font-size: 1.2em !important; font-weight: bold; color: #2c3e50; margin-bottom: 0 !important; padding: 10px !important; }
+    .leftover-row { background: #fff3e0; border-color: #ffe0b2; }
+    .calc-box { padding: 12px; border-radius: 8px; background: #eee; text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 0.95em; transition: 0.3s; border: 1px solid #ddd; }
+    .calc-good { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+    .calc-bad { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+    .view-toggle { display: flex; background: #dfe6e9; border-radius: 20px; padding: 4px; margin: 10px 0; }
+    .toggle-btn { flex: 1; border: none; background: transparent; padding: 8px; border-radius: 16px; font-weight: 600; color: #636e72; cursor: pointer; transition: 0.2s; }
+    .toggle-btn.active { background: white; color: #2c3e50; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .pair-round-header { background: #e67e22; color: white; padding: 8px; border-radius: 4px; margin-top: 15px; font-weight: bold; }
+    .pair-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .pair-table td { border: 1px solid #eee; padding: 8px; text-align: center; font-size: 0.9em; }
+    .pair-table .t-num { font-weight: bold; background: #f8f9fa; width: 30px; }
+    .status-bar { font-size: 0.85em; color: #7f8c8d; margin-bottom: 15px; text-align: center; font-style: italic; }
+    .edit-warning { background: #fff3cd; color: #856404; padding: 15px; text-align: center; border-radius: 8px; border: 1px solid #ffeeba; margin-bottom: 15px; font-weight: bold; }
+    #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+    .spinner { width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .loader-text { font-weight: bold; color: #2c3e50; font-size: 1.1em; letter-spacing: 0.5px; }
+  </style>
+</head>
+<body>
+
+  <div id="loader">
+    <div class="spinner"></div>
+    <div class="loader-text" id="loaderText">Loading Application...</div>
+  </div>
+
+  <div class="navbar" id="mainNav">
+    <button class="nav-btn active" data-tab="tab-setup">Settings</button>
+    <button class="nav-btn" data-tab="tab-players">Players</button>
+    <button class="nav-btn" data-tab="tab-pairings">Pairings</button>
+    <button class="nav-btn" data-tab="tab-scoring">Scoring</button>
+    <button class="nav-btn" data-tab="tab-penalties" style="color:#e74c3c;">Penalties</button>
+  </div>
+  
+  <div class="status-bar" id="activeTournamentLabel">Loading...</div>
+
+  <div id="tab-setup" class="tab-view active">
+    <div class="card">
+        <h2>Data Management</h2>
+        <a id="linkSheet" href="#" target="_blank" class="btn btn-blue" style="display:block; margin-bottom:15px;">Open Spreadsheet</a>
+        <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+        <label>Load Existing Tournament</label>
+        <div style="display:flex; gap:10px;">
+            <select id="selExisting" style="flex:2; margin-bottom:0;"></select>
+            <button id="btnSwitch" class="btn btn-green" style="flex:1; margin-top:0;" onclick="actionSwitch()">Load</button>
+        </div>
+    </div>
+
+    <div class="card">
+      <h2>Tournament Rules & Settings</h2>
+      
+      <label>Tournament Name</label>
+      <input type="text" id="newTitle" placeholder="e.g. Winter Cup 2026">
+      
+      <label>Uma (1st Place)</label> <input type="number" id="setUma1" inputmode="numeric">
+      <label>Uma (2nd Place)</label> <input type="number" id="setUma2" inputmode="numeric">
+      <label>Starting Points</label> <input type="number" id="setStart" inputmode="numeric">
+      <label>Total Rounds</label> <input type="number" id="setRounds" inputmode="numeric">
+
+      <label>Pairing Mode</label>
+      <select id="setPairMode">
+          <option value="scramble">Scramble (Random)</option>
+          <option value="swiss">Swiss (Score Based)</option>
+      </select>
+      
+      <div style="margin-top:15px; background:#f9f9f9; padding:10px; border-radius:8px; border:1px solid #eee;">
+          <div style="display:flex; align-items:center; gap:10px;">
+              <input type="checkbox" id="setTopCutEnabled" style="width:auto; margin:0;" onchange="toggleSetTopCut()">
+              <label for="setTopCutEnabled" style="margin:0; font-weight:600;">Enable Top Cut</label>
+          </div>
+          <div id="topCutFields" style="display:none; margin-top:10px;">
+              <label style="font-size:0.9em;">Cut Size (Players)</label>
+              <input type="number" id="setTopCutSize" placeholder="e.g. 4" inputmode="numeric" style="margin-bottom:10px;">
+              
+              <label style="font-size:0.9em;">Cut After Round</label>
+              <input type="number" id="setTopCutRound" placeholder="e.g. 4 (Cut happens before R5)" inputmode="numeric">
+              <div style="font-size:0.8em; color:#7f8c8d; margin-top:5px;">If set to 0, cut triggers manually or immediately.</div>
+          </div>
+      </div>
+
+      <div style="margin-top:15px; background:#ffebee; padding:10px; border-radius:8px; border:1px solid #ffcdd2;">
+          <h3 style="margin:0 0 10px 0; color:#c62828; font-size:1em;">Penalty Configuration</h3>
+          
+          <label>Penalty Ruleset</label>
+          <select id="newRuleset"></select>
+
+          <label>Chombo Penalty (Points)</label>
+          <input type="number" id="setChomboVal" placeholder="e.g. 20" inputmode="numeric" style="margin-bottom:0;">
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
+          <button class="btn btn-blue" id="btnSaveSettings" style="margin:0;" onclick="actionSaveSettings()">Update Existing Tournament</button>
+          <button class="btn btn-red" id="btnCreate" style="margin:0;" onclick="actionCreate()">Create New Tournament</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-players" class="tab-view">
+    <div class="card">
+      <h2>Add Player</h2>
+      <div style="display:flex; gap:10px;">
+        <input type="text" id="addName" placeholder="Name" style="flex:2;">
+        <input type="text" id="addId" placeholder="ID (Optional)" style="flex:1;">
+      </div>
+      <button class="btn btn-green" id="btnAddPlayer" onclick="actionAddPlayer()">Add Single</button>
+    </div>
+    <div class="card" style="border-left: 5px solid #3498db;">
+      <h2>Bulk Import</h2>
+      <textarea id="bulkText" rows="4" placeholder="Paste list of names here..."></textarea>
+      <button class="btn btn-blue" id="btnBulk" onclick="actionBulk()">Import List</button>
+    </div>
+    <div class="card">
+      <h2>Roster <span id="rosterCount" style="font-size:0.8em; color:#888;"></span></h2>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead><tr><th>ID</th><th>Name</th><th style="width:100px; text-align:right;">Actions</th></tr></thead>
+            <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-red" id="btnClearRoster" style="margin-top:15px; opacity:0.7;" onclick="actionClearRoster()">Clear All Players</button>
+    </div>
+  </div>
+
+  <div id="tab-pairings" class="tab-view">
+    <div class="card" style="border-left: 5px solid #8e44ad;">
+      <h2>Generate Pairings</h2>
+      <div id="pairStatus" style="margin-bottom:15px; font-weight:normal; color:#555; line-height:1.5;">Checking status...</div>
+      
+      <div id="swissOptions" style="display:none; background:#f8f9fa; padding:10px; border-radius:8px; margin-bottom:15px;">
+          <label>Bucket Configuration</label>
+          <select id="bucketSelect"></select>
+      </div>
+      
+      <button class="btn btn-blue" id="btnGenRound" onclick="actionGenerateRound()">Generate Round</button>
+    </div>
+
+    <div class="card" style="border-left: 5px solid #f1c40f;">
+      <h2>Swap Players</h2>
+      <div style="margin-bottom:10px;">
+          <label>Round</label>
+          <select id="swapRound" onchange="renderSwapTables()"></select>
+      </div>
+      <div style="display:flex; gap:10px; margin-bottom:10px;">
+         <div style="flex:1;">
+            <label>Table A</label>
+            <select id="swapTable1" onchange="renderSwapPlayers(1)"></select>
+            <select id="swapPlayer1" style="margin-top:5px; width:100%;"></select>
+         </div>
+         <div style="display:flex; align-items:center; font-size:1.5em; color:#95a5a6;">↔</div>
+         <div style="flex:1;">
+            <label>Table B</label>
+            <select id="swapTable2" onchange="renderSwapPlayers(2)"></select>
+            <select id="swapPlayer2" style="margin-top:5px; width:100%;"></select>
+         </div>
+      </div>
+      <button class="btn btn-orange" onclick="actionSwap()">Swap Players</button>
+    </div>
+
+    <div class="card">
+      <h2>Pairings</h2>
+      <div id="pairingsDisplay"></div>
+    </div>
+  </div>
+
+  <div id="tab-scoring" class="tab-view">
+    <div class="card">
+      <h2>Score Entry</h2>
+      <div id="unscoredBox" style="display:none; margin-bottom:15px; padding:10px; background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; color:#856404; font-size:0.95em;">
+         <span style="font-weight:bold;">⚠️ Pending Tables:</span> 
+         <span id="unscoredList" style="font-family:monospace; font-weight:bold; margin-left:5px;"></span>
+      </div>
+      <label>Round</label>
+      <select id="selRound" onchange="renderGameSelect()"></select>
+      <label>Table</label>
+      <select id="selGame" disabled onchange="renderScoreForm()"><option>Select Round First</option></select>
+    </div>
+    <div id="scoreArea" style="display:none;">
+      <div class="card">
+        <h2 id="gameTitle">Table X</h2>
+        <div id="editWarning" style="display:none;" class="edit-warning">⚠️ Table Already Scored - Editing Mode</div>
+        <div id="scoreRows"></div>
+        <div class="score-row leftover-row">
+          <span class="player-label">Leftover / Riichi Sticks</span>
+          <input type="number" id="valLeftover" class="score-val" value="" placeholder="0" inputmode="numeric" pattern="\d*" oninput="checkSum()">
+        </div>
+        <div id="chkSumDisplay" class="calc-box">Start entering scores...</div>
+        <button class="btn btn-green" id="btnSubmitScore" onclick="actionSubmitScore()" style="margin-top:20px;">Submit Score</button>
+      </div>
+    </div>
+    <div class="card" style="border-top: 5px solid #95a5a6;">
+        <h2 style="margin-bottom:5px;">Score Log</h2>
+        <div id="scoreLogContainer" style="margin-top:15px; overflow-x:auto;">
+            <table class="data-table">
+                <thead><tr><th style="white-space:nowrap;">Time</th><th>R-G</th><th style="min-width:120px;">Scores (Raw)</th></tr></thead>
+                <tbody id="scoreLogBody"></tbody>
+            </table>
+        </div>
+    </div>
+  </div>
+
+  <div id="tab-penalties" class="tab-view">
+    <div class="card" style="border-top: 5px solid #c0392b;">
+        <h2>Chombo / Penalty</h2>
+        <div style="display:flex; gap:10px;">
+            <div style="flex:1;">
+                <label>Round</label>
+                <select id="penRound" onchange="renderPenaltyTables()"></select>
+            </div>
+            <div style="flex:1;">
+                <label>Table</label>
+                <select id="penTable" disabled onchange="renderPenaltyPlayers()"><option>-</option></select>
+            </div>
+        </div>
+        <label>Select Player</label>
+        <select id="penPlayer"><option value="">-- Select Table First --</option></select>
+        
+        <label>Penalty Type</label>
+        <select id="penType" onchange="renderPenaltyFouls()"><option value="">-- Select Category --</option></select>
+        
+        <label>Specific Foul</label>
+        <select id="penFoul" disabled onchange="calculatePenalty()"><option value="">-- Select Type First --</option></select>
+        
+        <label>Notes</label>
+        <textarea id="penNotes" rows="2" placeholder="Optional details..."></textarea>
+        
+        <div id="penCalcDisplay" style="margin-top:10px; padding:10px; background:#f4f4f4; border-radius:6px; font-weight:bold; color:#555; text-align:center;">
+            Select a foul to see penalty.
+        </div>
+        <input type="hidden" id="penCalculatedPoints" value="0">
+
+        <button class="btn btn-red" id="btnSubmitPenalty" onclick="actionSubmitPenalty()">Apply Deduction</button>
+    </div>
+    <div class="card">
+        <h2>History</h2>
+        <div style="overflow-x:auto;">
+            <table class="data-table">
+                <thead><tr><th style="width:70px;">Time</th><th style="width:30px;">Rd</th><th style="width:30px;">Tbl</th><th>Player</th><th>Pts</th><th>Reason</th><th>Notes</th></tr></thead>
+                <tbody id="penHistory"></tbody>
+            </table>
+        </div>
+    </div>
+  </div>
+
+  <script>
+    let DATA = {};
+
+    function showBusy(msg) { document.getElementById('loaderText').innerText = msg || "Processing..."; document.getElementById('loader').style.display = 'flex'; }
+    function hideBusy() { document.getElementById('loader').style.display = 'none'; }
+
+    // --- INITIALIZATION ---
+    window.addEventListener('DOMContentLoaded', () => {
+      initTabs();
+      showBusy("Loading All Data...");
+      google.script.run.withSuccessHandler(d => {
+          DATA = d;
+          renderAll();
+          hideBusy();
+      }).withFailureHandler(e => { alert(e); hideBusy(); }).getInitialAdminData();
+    });
+
+    function initTabs() {
+      const btns = document.querySelectorAll('.nav-btn');
+      const views = document.querySelectorAll('.tab-view');
+      btns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          btns.forEach(b => b.classList.remove('active'));
+          views.forEach(v => v.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(btn.dataset.tab).classList.add('active');
+        });
+      });
+    }
+
+    function renderAll() {
+        renderSettings();
+        renderRoster();
+        renderPairings();
+        renderPairingStatus();
+        renderScoreLog();
+        renderPenalties();
+        renderPenaltyTypes();
+        renderRulesetOptions();
+        
+        const rCount = DATA.settings.roundCount || 4;
+        let rOpts = '<option value="" disabled selected>-- Select --</option>';
+        for(let i=1; i<=rCount; i++) rOpts += `<option value="${i}">Round ${i}</option>`;
+        
+        ['selRound', 'penRound', 'swapRound'].forEach(id => {
+            document.getElementById(id).innerHTML = rOpts;
+        });
+        
+        if(DATA.pairingState.nextRound > 1) {
+             document.getElementById('swapRound').value = DATA.pairingState.nextRound - 1;
+             renderSwapTables();
+        }
+    }
+
+    // --- RENDERERS ---
+    function renderSettings() {
+        const s = DATA.settings;
+        document.getElementById('activeTournamentLabel').textContent = "Active: " + s.activeName;
+        document.getElementById('setUma1').value = s.uma1;
+        document.getElementById('setUma2').value = s.uma2;
+        document.getElementById('setStart').value = s.startPoints;
+        document.getElementById('setRounds').value = s.roundCount;
+        
+        document.getElementById('setPairMode').value = s.pairingMode || 'scramble';
+        document.getElementById('setTopCutEnabled').checked = (s.topCutEnabled === "true");
+        document.getElementById('setTopCutSize').value = s.topCutSize;
+        document.getElementById('setTopCutRound').value = s.topCutRound;
+        toggleSetTopCut();
+        
+        if(document.getElementById('setChomboVal')) {
+            document.getElementById('setChomboVal').value = s.chomboValue;
+        }
+
+        document.getElementById('linkSheet').href = DATA.url;
+        
+        const sel = document.getElementById('selExisting');
+        sel.innerHTML = DATA.tournaments.length ? "" : "<option>No other files</option>";
+        DATA.tournaments.forEach(t => sel.innerHTML += `<option value="${t.id}">${t.name}</option>`);
+    }
+
+    function toggleSetTopCut() {
+        const chk = document.getElementById('setTopCutEnabled');
+        document.getElementById('topCutFields').style.display = chk.checked ? 'block' : 'none';
+    }
+
+    function renderRulesetOptions() {
+        const sel = document.getElementById('newRuleset');
+        if (!sel || !DATA.rulesets) return;
+        sel.innerHTML = '';
+        DATA.rulesets.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r;
+            opt.innerText = r;
+            sel.appendChild(opt);
+        });
+    }
+
+    function renderRoster() {
+        const tbody = document.getElementById('rosterBody');
+        document.getElementById('rosterCount').textContent = `(${DATA.players.length})`;
+        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='3' style='text-align:center;'>No players</td></tr>";
+        DATA.players.forEach(p => {
+            const safe = p.name.replace(/'/g, "\\'");
+            tbody.innerHTML += `<tr><td style="color:#3498db; font-weight:bold;">${p.id}</td><td>${p.name}</td><td style="text-align:right;"><button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button><button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button></td></tr>`;
+        });
+    }
+
+    function renderPairings() {
+        const div = document.getElementById('pairingsDisplay');
+        if(!DATA.schedule || !DATA.schedule.length) { div.innerHTML = "<div style='text-align:center;color:#999;padding:20px;'>No Pairings</div>"; return; }
+        
+        let html = "";
+        DATA.schedule.forEach(r => {
+            html += `<div class="pair-round-header">Round ${r.round}</div><table class="pair-table">`;
+            r.tables.forEach(t => {
+                let badge = "";
+                if(t.bucket) {
+                    let colors = {'A':'#2ecc71','B':'#3498db','C':'#9b59b6','D':'#e67e22','E':'#e74c3c'};
+                    badge = `<span style="background:${colors[t.bucket]||'#95a5a6'};color:white;padding:2px 6px;border-radius:4px;font-size:0.8em;margin-left:5px;">${t.bucket}</span>`;
+                }
+                html += `<tr><td class="t-num" style="white-space:nowrap;">${t.id}${badge}</td><td>${t.p1}</td><td>${t.p2}</td><td>${t.p3}</td><td>${t.p4}</td></tr>`;
+            });
+            html += `</table>`;
+        });
+        div.innerHTML = html;
+    }
+
+    function renderPairingStatus() {
+        const ps = DATA.pairingState;
+        const div = document.getElementById('pairStatus');
+        const btn = document.getElementById('btnGenRound');
+        const s = DATA.settings;
+        
+        if(ps.error) { div.innerText = "Error: " + ps.error; btn.disabled = true; return; }
+        
+        if(ps.nextRound > ps.totalRounds) {
+            div.innerHTML = `Tournament Complete (${ps.totalRounds} Rounds)`;
+            btn.disabled = true;
+            btn.innerText = "Tournament Finished";
+        } else {
+            let info = `Next: <b>Round ${ps.nextRound}</b><br>Mode: <span style="color:#2980b9">${(s.pairingMode||"scramble").toUpperCase()}</span>`;
+            if (s.topCutEnabled === "true") {
+                let rInfo = s.topCutRound > 0 ? ` (After R${s.topCutRound})` : "";
+                info += `<br>Top Cut: <span style="color:#e67e22">Active (Top ${s.topCutSize}${rInfo})</span>`;
+            }
+            div.innerHTML = info;
+            btn.disabled = false;
+            btn.innerText = `Generate Round ${ps.nextRound}`;
+        }
+        
+        const bucketUI = document.getElementById('swissOptions');
+        if (s.pairingMode === 'swiss') {
+            bucketUI.style.display = 'block';
+            populateBucketDropdown();
+        } else {
+            bucketUI.style.display = 'none';
+        }
+    }
+
+    function populateBucketDropdown() {
+        const sel = document.getElementById('bucketSelect');
+        sel.innerHTML = "";
+        if(!DATA.pairingState.validBuckets) return;
+        DATA.pairingState.validBuckets.forEach(opt => {
+            const el = document.createElement('option');
+            el.value = opt.val;
+            el.text = opt.label;
+            if(opt.val == DATA.pairingState.lastBuckets) el.selected = true;
+            sel.appendChild(el);
+        });
+    }
+
+    // --- ACTIONS ---
+    function refreshAndRender() {
+        showBusy("Refreshing Data...");
+        google.script.run.withSuccessHandler(d => { DATA = d; renderAll(); hideBusy(); }).getInitialAdminData();
+    }
+    
+    // NEW: Lightweight refresh for scoring only
+    function refreshScoringOnly() {
+        showBusy("Refreshing Scores...");
+        google.script.run.withSuccessHandler(d => {
+            DATA.allGames = d.allGames;
+            DATA.scoreLog = d.scoreLog;
+            renderGameSelect();
+            renderScoreLog();
+            hideBusy();
+        }).getScoringUpdateData();
+    }
+
+    function actionSubmitScore() {
+        const start = parseFloat(DATA.settings.startPoints);
+        const target = start * 4;
+        const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
+        const total = getVal('val_p1') + getVal('val_p2') + getVal('val_p3') + getVal('val_p4') + getVal('valLeftover');
+        if(total !== target) return alert(`Total mismatch! Required: ${target}, Current: ${total}`);
+
+        showBusy("Saving...");
+        const payload = { 
+            round: document.getElementById('selRound').value, 
+            game: { 
+                gameId: document.getElementById('selGame').value, 
+                p1Id: document.getElementById('pid_p1').value, p1Score: getVal('val_p1'), 
+                p2Id: document.getElementById('pid_p2').value, p2Score: getVal('val_p2'), 
+                p3Id: document.getElementById('pid_p3').value, p3Score: getVal('val_p3'), 
+                p4Id: document.getElementById('pid_p4').value, p4Score: getVal('val_p4'), 
+                leftoverScore: getVal('valLeftover') 
+            } 
+        };
+        google.script.run.withSuccessHandler(res => {
+            alert(res.message);
+            document.getElementById('scoreArea').style.display = 'none';
+            document.getElementById('selGame').value = "";
+            refreshScoringOnly(); // Lightweight update instead of full reload
+        }).withFailureHandler(e => { alert(e); hideBusy(); }).saveScores(payload);
+    }
+
+    function actionGenerateRound() {
+        const buckets = document.getElementById('bucketSelect').value || 1;
+        if(!confirm(`Generate Round ${DATA.pairingState.nextRound}?`)) return;
+        
+        showBusy("Generating...");
+        google.script.run.withSuccessHandler(res => {
+            alert(res.message);
+            refreshAndRender();
+        }).generateNextRound(buckets);
+    }
+
+    function actionSaveSettings() {
+        showBusy("Saving...");
+        const d = { 
+            uma1: document.getElementById('setUma1').value, 
+            uma2: document.getElementById('setUma2').value, 
+            startPoints: document.getElementById('setStart').value, 
+            roundCount: document.getElementById('setRounds').value,
+            pairingMode: document.getElementById('setPairMode').value,
+            topCutEnabled: document.getElementById('setTopCutEnabled').checked.toString(),
+            topCutSize: document.getElementById('setTopCutSize').value,
+            topCutRound: document.getElementById('setTopCutRound').value,
+            chomboValue: document.getElementById('setChomboVal').value
+        };
+        google.script.run.withSuccessHandler(() => { alert("Saved"); refreshAndRender(); }).saveTournamentSettings(d);
+    }
+
+    function actionSwap(force) {
+        const round = document.getElementById('swapRound').value;
+        const t1 = document.getElementById('swapTable1').value;
+        const p1 = document.getElementById('swapPlayer1').value;
+        const t2 = document.getElementById('swapTable2').value;
+        const p2 = document.getElementById('swapPlayer2').value;
+        if(!round || !t1 || !p1 || !t2 || !p2) return alert("Select all fields.");
+        if(t1 === t2) return alert("Tables must be different.");
+
+        showBusy("Swapping...");
+        google.script.run.withSuccessHandler(res => {
+            if(!res.success && res.warning) {
+                hideBusy();
+                if(confirm(res.message)) actionSwap(true);
+            } else if (res.success) {
+                alert(res.message);
+                refreshAndRender();
+            } else {
+                alert(res.message);
+                hideBusy();
+            }
+        }).swapPairings(round, t1, p1, t2, p2, force === true);
+    }
+
+    // --- PENALTY ACTIONS ---
+    function actionSubmitPenalty() {
+        const round = document.getElementById('penRound').value;
+        const table = document.getElementById('penTable').value;
+        const pid = document.getElementById('penPlayer').value;
+        const pts = document.getElementById('penCalculatedPoints').value; 
+        const type = document.getElementById('penType').value;
+        const foul = document.getElementById('penFoul').value;
+        const notes = document.getElementById('penNotes').value;
+        
+        if(!round || !pid || !type || !foul) return alert("Missing fields.");
+        
+        const rule = DATA.penaltyList.find(p => p.type === type && p.foul === foul);
+        let valStr = String(rule.penalty).trim();
+
+        let reason = `${type}: ${foul} [${valStr}]`;
+
+        showBusy("Applying...");
+        google.script.run.withSuccessHandler(res => {
+            alert(res.message);
+            document.getElementById('penNotes').value = "";
+            renderPenaltyFouls(); 
+            refreshAndRender();
+        }).addPenalty(round, (table || "-"), pid, pts, reason, notes);
+    }
+
+    function actionAddPlayer() {
+        const n = document.getElementById('addName').value;
+        const i = document.getElementById('addId').value;
+        if(!n) return;
+        showBusy("Adding...");
+        google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); document.getElementById('addName').value=""; hideBusy(); }).addPlayer(n, i);
+    }
+    
+    function actionBulk() {
+        const txt = document.getElementById('bulkText').value;
+        if(!txt.trim()) return;
+        showBusy("Importing...");
+        google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); document.getElementById('bulkText').value=""; hideBusy(); }).addPlayersBulk(txt.split('\n'));
+    }
+
+    function actionDeletePlayer(id, name) {
+        if(confirm(`Remove ${name}?`)) { showBusy("Deleting..."); google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); hideBusy(); }).deletePlayer(id); }
+    }
+    function actionToggleDNF(id) {
+        showBusy("Updating..."); google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); hideBusy(); }).togglePlayerDNF(id);
+    }
+    function actionClearRoster() {
+        if(confirm("Clear All?")) { showBusy("Clearing..."); google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); hideBusy(); }).clearAllPlayers(); }
+    }
+    function actionSwitch() {
+        const id = document.getElementById('selExisting').value;
+        showBusy("Switching...");
+        google.script.run.withSuccessHandler(res => { alert(res); refreshAndRender(); }).switchTournament(id);
+    }
+    function actionCreate() {
+        const n = document.getElementById('newTitle').value;
+        const ruleset = document.getElementById('newRuleset').value;
+        if(confirm("Create new file?")) { 
+            showBusy("Creating..."); 
+            google.script.run.withSuccessHandler(res => { 
+                alert(res); 
+                refreshAndRender(); 
+            }).startNewTournament(n, ruleset); 
+        }
+    }
+
+    // --- RENDER HELPERS ---
+    function renderSwapTables() {
+        const r = document.getElementById('swapRound').value;
+        const s1 = document.getElementById('swapTable1');
+        const s2 = document.getElementById('swapTable2');
+        let games = DATA.allGames[r] || [];
+        let ops = '<option value="" selected>-- Select --</option>';
+        games.forEach(g => { ops += `<option value="${g.id}">Table ${g.id}</option>`; });
+        s1.innerHTML = ops; s1.disabled = false;
+        s2.innerHTML = ops; s2.disabled = false;
+        document.getElementById('swapPlayer1').innerHTML = "";
+        document.getElementById('swapPlayer2').innerHTML = "";
+    }
+    function renderSwapPlayers(n) {
+        const r = document.getElementById('swapRound').value;
+        const tId = document.getElementById(`swapTable${n}`).value;
+        const pSel = document.getElementById(`swapPlayer${n}`);
+        pSel.innerHTML = "";
+        let game = (DATA.allGames[r] || []).find(g => String(g.id) === String(tId));
+        if(!game) return;
+        ['p1','p2','p3','p4'].forEach(k => { pSel.innerHTML += `<option value="${game[k].id}">${game[k].name}</option>`; });
+    }
+    function renderGameSelect() {
+        const r = document.getElementById('selRound').value;
+        const sel = document.getElementById('selGame');
+        const games = DATA.allGames[r] || [];
+        const unscored = games.filter(g => !g.isScored).map(g => g.id).sort((a,b)=>a-b);
+        document.getElementById('unscoredBox').style.display = unscored.length ? 'block' : 'none';
+        document.getElementById('unscoredList').textContent = unscored.join(", ");
+        sel.innerHTML = '<option value="" disabled selected>-- Select Table --</option>';
+        if(!games.length) sel.innerHTML = '<option disabled>No tables</option>';
+        games.forEach(g => { sel.innerHTML += `<option value="${g.id}">Table ${g.id}${g.isScored ? ' ✓' : ''}</option>`; });
+        sel.disabled = false;
+        document.getElementById('scoreArea').style.display = 'none';
+    }
+    function renderScoreForm() {
+        const r = document.getElementById('selRound').value;
+        const gid = document.getElementById('selGame').value;
+        const game = (DATA.allGames[r] || []).find(g => String(g.id) === String(gid));
+        if(!game) return;
+        document.getElementById('scoreArea').style.display = 'block';
+        document.getElementById('gameTitle').textContent = "Table " + gid;
+        showBusy("Checking...");
+        google.script.run.withSuccessHandler(res => {
+            const isScored = res.scored;
+            document.getElementById('editWarning').style.display = isScored ? 'block' : 'none';
+            document.getElementById('btnSubmitScore').textContent = isScored ? "Update Score" : "Submit Score";
+            let html = "";
+            let scores = res.scores || {};
+            ['p1','p2','p3','p4'].forEach(k => {
+               let p = game[k];
+               let val = isScored ? scores[k] : "";
+               html += `<div class="score-row"><span class="player-label">${p.name} <span class="id-tag">(${p.id})</span></span><input type="hidden" id="pid_${k}" value="${p.id}"><input type="number" id="val_${k}" class="score-val" value="${val}" placeholder="Pts" oninput="checkSum()"></div>`;
+            });
+            document.getElementById('scoreRows').innerHTML = html;
+            document.getElementById('valLeftover').value = isScored ? scores.leftover : "";
+            checkSum();
+            hideBusy();
+        }).checkIfScored(r, gid, game.p1.id, game.p2.id, game.p3.id, game.p4.id);
+    }
+    function checkSum() {
+        const start = parseFloat(DATA.settings.startPoints) || 30000;
+        const target = start * 4;
+        const getVal = (id) => { const el = document.getElementById(id); return el && el.value ? parseFloat(el.value) : 0; };
+        const sum = getVal('val_p1') + getVal('val_p2') + getVal('val_p3') + getVal('val_p4') + getVal('valLeftover');
+        const diff = target - sum;
+        const box = document.getElementById('chkSumDisplay');
+        if (sum === 0 && getVal('valLeftover') === 0) { box.className = "calc-box"; box.innerText = "Start entering scores..."; } 
+        else if (diff === 0) { box.className = "calc-box calc-good"; box.innerText = "✅ Check Sum: OK"; } 
+        else { box.className = "calc-box calc-bad"; box.innerText = `⚠️ ${diff>0?"Missing":"Over"} ${Math.abs(diff)}`; }
+    }
+    function renderScoreLog() {
+        const body = document.getElementById('scoreLogBody');
+        body.innerHTML = "";
+        DATA.scoreLog.forEach(r => {
+            body.innerHTML += `<tr><td style="font-size:0.85em; color:#7f8c8d;">${r.date}</td><td style="font-weight:bold; text-align:center;">${r.round}-${r.game}</td><td style="font-size:0.9em;">${r.p1}<br>${r.p2}<br>${r.p3}<br>${r.p4}<div style="font-size:0.8em; color:#999; margin-top:4px;">Sticks: ${r.leftover}</div></td></tr>`;
+        });
+    }
+    
+    // --- PENALTY RENDERERS ---
+    function renderPenalties() {
+        const body = document.getElementById('penHistory');
+        body.innerHTML = "";
+        DATA.penalties.forEach(p => {
+            let ptsDisplay = (p.points == 0) ? `<span style="color:#aaa;">0</span>` : `<span style="color:#c0392b; font-weight:bold;">-${p.points}</span>`;
+            body.innerHTML += `<tr><td style="font-size:0.85em; color:#7f8c8d;">${p.date}</td><td style="font-weight:bold; text-align:center;">${p.round}</td><td style="font-weight:bold; text-align:center;">${p.table}</td><td style="font-weight:bold;">${p.name}</td><td>${ptsDisplay}</td><td style="color:#555; font-size:0.9em;">${p.reason}</td><td style="color:#555; font-size:0.9em;">${p.notes}</td></tr>`;
+        });
+    }
+
+    function renderPenaltyTables() {
+        const r = document.getElementById('penRound').value;
+        const sel = document.getElementById('penTable');
+        const pSel = document.getElementById('penPlayer');
+        const games = DATA.allGames[r] || [];
+        sel.innerHTML = '<option value="" selected>-- Select Table --</option>';
+        if(!games.length) sel.innerHTML = '<option disabled>No tables</option>';
+        games.forEach(g => { sel.innerHTML += `<option value="${g.id}">Table ${g.id}</option>`; });
+        sel.disabled = false;
+        pSel.innerHTML = "<option>Select Table First</option>"; 
+        pSel.disabled = true;
+    }
+    function renderPenaltyPlayers() {
+        const r = document.getElementById('penRound').value;
+        const t = document.getElementById('penTable').value;
+        const pSel = document.getElementById('penPlayer');
+        const game = (DATA.allGames[r] || []).find(g => String(g.id) === String(t));
+        if(!game) return;
+        pSel.innerHTML = '<option value="">-- Select Player --</option>';
+        ['p1','p2','p3','p4'].forEach(k => { pSel.innerHTML += `<option value="${game[k].id}">${game[k].name}</option>`; });
+        pSel.disabled = false;
+    }
+
+    // New Penalty Logic Renderers
+    function renderPenaltyTypes() {
+        if(!DATA.penaltyList) return;
+        const typeSet = new Set(DATA.penaltyList.map(p => p.type));
+        const sel = document.getElementById('penType');
+        sel.innerHTML = '<option value="">-- Select Category --</option>';
+        typeSet.forEach(t => {
+            sel.innerHTML += `<option value="${t}">${t}</option>`;
+        });
+    }
+
+    function renderPenaltyFouls() {
+        const type = document.getElementById('penType').value;
+        const sel = document.getElementById('penFoul');
+        sel.innerHTML = '<option value="">-- Select Foul --</option>';
+        if(!type) { sel.disabled = true; return; }
+        
+        const fouls = DATA.penaltyList.filter(p => p.type === type);
+        fouls.forEach(f => {
+            sel.innerHTML += `<option value="${f.foul}">${f.foul}</option>`;
+        });
+        sel.disabled = false;
+        calculatePenalty();
+    }
+
+    function calculatePenalty() {
+        const type = document.getElementById('penType').value;
+        const foulName = document.getElementById('penFoul').value;
+        const display = document.getElementById('penCalcDisplay');
+        const hiddenVal = document.getElementById('penCalculatedPoints');
+        
+        if(!type || !foulName) {
+            display.innerText = "Select a foul to see penalty.";
+            hiddenVal.value = 0;
+            return;
+        }
+
+        const rule = DATA.penaltyList.find(p => p.type === type && p.foul === foulName);
+        if(!rule) return;
+
+        let valStr = String(rule.penalty).trim();
+        let pts = 0;
+        let label = "";
+
+        if (valStr.toLowerCase() === "chombo") {
+            pts = parseInt(DATA.settings.chomboValue || 20);
+            label = `Chombo (-${pts} pts)`;
+        } else {
+            let numericVal = parseFloat(valStr);
+            if (!isNaN(numericVal)) {
+                pts = numericVal;
+                label = pts > 0 ? `-${pts} pts` : "0 pts";
+            } else {
+                pts = 0;
+                label = valStr;
+            }
+        }
+
+        display.innerHTML = `Penalty: <span style="color:#c0392b">${label}</span>`;
+        hiddenVal.value = pts;
+    }
+  </script>
+</body>
+</html>
