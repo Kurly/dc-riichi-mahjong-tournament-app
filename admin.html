@@ -310,7 +310,7 @@
       });
     }
 
-    function renderAll() {
+function renderAll() {
         renderSettings();
         renderRoster();
         renderPairings();
@@ -320,17 +320,31 @@
         renderPenaltyTypes();
         renderRulesetOptions();
         
-        const rCount = DATA.settings.roundCount || 4;
-        let rOpts = '<option value="" disabled selected>-- Select --</option>';
-        for(let i=1; i<=rCount; i++) rOpts += `<option value="${i}">Round ${i}</option>`;
+        let maxGeneratedRound = DATA.pairingState.nextRound - 1;
+        let rOpts = '';
+        
+        if (maxGeneratedRound < 1) {
+            rOpts = '<option disabled selected>No rounds generated</option>';
+        } else {
+            for(let i = 1; i <= maxGeneratedRound; i++) {
+                if (i === maxGeneratedRound) {
+                    rOpts += `<option value="${i}" selected>Round ${i}</option>`;
+                } else {
+                    rOpts += `<option value="${i}">Round ${i}</option>`;
+                }
+            }
+        }
         
         ['selRound', 'penRound', 'swapRound'].forEach(id => {
-            document.getElementById(id).innerHTML = rOpts;
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = rOpts;
         });
         
-        if(DATA.pairingState.nextRound > 1) {
-             document.getElementById('swapRound').value = DATA.pairingState.nextRound - 1;
+        // Auto-trigger the secondary dropdowns to match the selected round
+        if(maxGeneratedRound >= 1) {
+             renderGameSelect();
              renderSwapTables();
+             renderPenaltyTables();
         }
     }
 

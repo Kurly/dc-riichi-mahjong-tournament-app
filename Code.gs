@@ -48,7 +48,9 @@ function getInitialAdminData() {
 }
 
 // NEW: Lightweight fetch for just the scoring tab
+
 function getScoringUpdateData() {
+  SpreadsheetApp.flush(); // Safety net to force latest sheet data before reading
   return {
     scoreLog: getScoreLog(),
     allGames: getAllGamesData()
@@ -855,6 +857,10 @@ function saveScores(form) {
   
   if (check.scored && check.rowIndex) { sheet.getRange(check.rowIndex, 1, 1, rowData.length).setValues([rowData]); }
   else { sheet.appendRow(rowData); }
+  
+  // FORCE GOOGLE TO WRITE THE QUEUE TO THE SPREADSHEET IMMEDIATELY
+  SpreadsheetApp.flush(); 
+  updateLeaderboardSheet();
   
   return { success: true, message: check.scored ? "Updated existing score." : "Saved new score." };
 }
