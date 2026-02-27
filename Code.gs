@@ -473,7 +473,7 @@ function getPairingState() {
   };
 }
 
-function generateNextRound(bucketCount) {
+function generateNextRound(bucketCount, addSubs) {
   const ss = getDataSS();
   let pairSheet = ss.getSheetByName("Pairings");
   if (!pairSheet) pairSheet = ss.insertSheet("Pairings");
@@ -481,7 +481,7 @@ function generateNextRound(bucketCount) {
   const state = getPairingState();
   const round = state.nextRound;
 
-  // --- NEW: Block generation if previous round is missing scores ---
+  // --- Block generation if previous round is missing scores ---
   const allGames = getAllGamesData();
   const currentRound = round - 1;
   if (currentRound > 0 && allGames[currentRound]) {
@@ -490,12 +490,31 @@ function generateNextRound(bucketCount) {
       return { success: false, message: `Cannot generate round. ${unscored.length} table(s) are missing scores in Round ${currentRound}.` };
     }
   }
-  let players = getPlayers(); 
-  while(players.length % 4 !== 0) players.push({ id: "BYE", name: "BYE" });
-  
+
+  let players = getPlayers();
+
+  // --- NEW: Add SUB players if requested (Replaces BYE logic) ---
+  if (addSubs && players.length % 4 !== 0) {
+    const subsNeeded = 4 - (players.length % 4);
+    
+    // Count existing SUBs to number the new ones correctly
+    let subCount = players.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
+    
+    for (let i = 0; i < subsNeeded; i++) {
+      subCount++;
+      addPlayer(`SUB ${subCount}`); 
+    }
+    players = getPlayers(); // Refetch the updated roster
+  }
+
+  // --- Hard block if we still aren't divisible by 4 ---
+  if (players.length % 4 !== 0) {
+    return { success: false, message: "Cannot generate round. The number of players must be a multiple of 4." };
+  }
+
   let history = {};
   players.forEach(p => history[p.id] = []);
-  
+    
   if (pairSheet.getLastRow() > 1) {
     const data = pairSheet.getDataRange().getValues();
     let inData = false;

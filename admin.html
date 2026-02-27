@@ -510,9 +510,23 @@
 
 function actionGenerateRound() {
         const buckets = document.getElementById('bucketSelect').value || 1;
-        if(!confirm(`Generate Round ${DATA.pairingState.nextRound}?`)) return;
+        let addSubs = false;
+        
+        // If it's round 1 and the players aren't divisible by 4, ask to add SUBs
+        if (DATA.pairingState.nextRound === 1 && DATA.players.length % 4 !== 0) {
+            const subsNeeded = 4 - (DATA.players.length % 4);
+            if (confirm(`Player count (${DATA.players.length}) is not divisible by 4.\n\nWould you like to auto-add ${subsNeeded} SUB player(s) to fill the seats?`)) {
+                addSubs = true;
+            } else {
+                return; // Cancel generation if they decline, since we removed BYEs
+            }
+        } else {
+            // Standard confirmation for all other rounds / even counts
+            if(!confirm(`Generate Round ${DATA.pairingState.nextRound}?`)) return;
+        }
         
         showBusy("Generating...");
+        // Pass the addSubs flag to the backend
         google.script.run.withSuccessHandler(res => {
             if (res.success === false) {
                 alert(res.message);
@@ -521,7 +535,7 @@ function actionGenerateRound() {
             }
             alert(res.message);
             refreshAndRender();
-        }).generateNextRound(buckets);
+        }).generateNextRound(buckets, addSubs);
     }
 
     function actionSaveSettings() {
