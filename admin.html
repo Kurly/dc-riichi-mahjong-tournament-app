@@ -95,6 +95,12 @@
           <option value="swiss">Swiss (Score Based)</option>
       </select>
       
+      <label>Tiebreaker Rule</label>
+      <select id="setTiebreaker">
+          <option value="split">Split Uma (Average the placement bonuses)</option>
+          <option value="head_bump">Head Bump (Prompt for seat order)</option>
+      </select>
+      
       <div style="margin-top:15px; background:#f9f9f9; padding:10px; border-radius:8px; border:1px solid #eee;">
           <div style="display:flex; align-items:center; gap:10px;">
               <input type="checkbox" id="setTopCutEnabled" style="width:auto; margin:0;" onchange="toggleSetTopCut()">
@@ -341,6 +347,7 @@
         document.getElementById('setTopCutEnabled').checked = (s.topCutEnabled === "true");
         document.getElementById('setTopCutSize').value = s.topCutSize;
         document.getElementById('setTopCutRound').value = s.topCutRound;
+        document.getElementById('setTiebreaker').value = DATA.settings.tiebreakerRule || 'split';
         toggleSetTopCut();
         
         if(document.getElementById('setChomboVal')) {
@@ -481,18 +488,53 @@
         }).getScoringUpdateData();
     }
 
-    function actionSubmitScore() {
+    async function actionSubmitScore() {
         const start = parseFloat(DATA.settings.startPoints);
         const target = start * 4;
         const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
         const total = getVal('val_p1') + getVal('val_p2') + getVal('val_p3') + getVal('val_p4') + getVal('valLeftover');
         if(total !== target) return alert(`Total mismatch! Required: ${target}, Current: ${total}`);
 
+        // Grab the player names from the local game object for the prompt
+        const r = document.getElementById('selRound').value;
+        const gid = document.getElementById('selGame').value;
+        const gameObj = DATA.allGames[r].find(g => String(g.id) === String(gid));
+
+        let pList = [
+            { id: document.getElementById('pid_p1').value, name: gameObj.p1.name, s: getVal('val_p1') },
+            { id: document.getElementById('pid_p2').value, name: gameObj.p2.name, s: getVal('val_p2') },
+            { id: document.getElementById('pid_p3').value, name: gameObj.p3.name, s: getVal('val_p3') },
+            { id: document.getElementById('pid_p4').value, name: gameObj.p4.name, s: getVal('val_p4') }
+        ];
+
+        // Sort by score to group ties
+        pList.sort((a,b) => b.s - a.s);
+        let rankedIds = [];
+
+        let i = 0;
+        while(i < 4) {
+            let j = i;
+            let group = [];
+            while(j < 4 && pList[j].s === pList[i].s) {
+                group.push(pList[j]);
+                j++;
+            }
+            // If there's a tie and Head Bump is ON, prompt the user
+            if (group.length > 1 && DATA.settings.tiebreakerRule === 'head_bump') {
+                let resolved = await resolveTieGroup(group);
+                rankedIds.push(...resolved.map(p => p.id));
+            } else {
+                rankedIds.push(...group.map(p => p.id));
+            }
+            i = j;
+        }
+
         showBusy("Saving...");
         const payload = { 
-            round: document.getElementById('selRound').value, 
+            round: r, 
+            rankedIds: rankedIds, // We pass the explicit resolved order to the server
             game: { 
-                gameId: document.getElementById('selGame').value, 
+                gameId: gid, 
                 p1Id: document.getElementById('pid_p1').value, p1Score: getVal('val_p1'), 
                 p2Id: document.getElementById('pid_p2').value, p2Score: getVal('val_p2'), 
                 p3Id: document.getElementById('pid_p3').value, p3Score: getVal('val_p3'), 
@@ -504,10 +546,42 @@
             alert(res.message);
             document.getElementById('scoreArea').style.display = 'none';
             document.getElementById('selGame').value = "";
-            refreshScoringOnly(); // Lightweight update instead of full reload
+            refreshScoringOnly();
         }).withFailureHandler(e => { alert(e); hideBusy(); }).saveScores(payload);
     }
+function resolveTieGroup(group) {
+        return new Promise(async resolve => {
+            let resolvedOrder = [];
+            let remaining = [...group];
+            while(remaining.length > 1) {
+                let selected = await askTiebreaker(remaining);
+                resolvedOrder.push(selected);
+                remaining = remaining.filter(p => p.id !== selected.id);
+            }
+            resolvedOrder.push(remaining[0]);
+            resolve(resolvedOrder);
+        });
+    }
 
+    function askTiebreaker(players) {
+        return new Promise(resolve => {
+            document.getElementById('tieOverlay').style.display = 'block';
+            document.getElementById('tieModal').style.display = 'block';
+            let opts = document.getElementById('tieOptions');
+            opts.innerHTML = '';
+            players.forEach(p => {
+                let btn = document.createElement('button');
+                btn.className = 'btn btn-blue';
+                btn.innerText = p.name + ` (${p.s} pts)`;
+                btn.onclick = () => {
+                    document.getElementById('tieOverlay').style.display = 'none';
+                    document.getElementById('tieModal').style.display = 'none';
+                    resolve(p);
+                };
+                opts.appendChild(btn);
+            });
+        });
+    }
 function actionGenerateRound() {
         const buckets = document.getElementById('bucketSelect').value || 1;
         let addSubs = false;
@@ -550,6 +624,7 @@ function actionGenerateRound() {
             topCutSize: document.getElementById('setTopCutSize').value,
             topCutRound: document.getElementById('setTopCutRound').value,
             chomboValue: document.getElementById('setChomboVal').value
+            tiebreakerRule: document.getElementById('setTiebreaker').value 
         };
         google.script.run.withSuccessHandler(() => { alert("Saved"); refreshAndRender(); }).saveTournamentSettings(d);
     }
@@ -831,5 +906,11 @@ function actionGenerateRound() {
         hiddenVal.value = pts;
     }
   </script>
+  <div id="tieOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9998;"></div>
+  <div id="tieModal" class="card" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:9999; box-shadow:0 10px 30px rgba(0,0,0,0.2); width:90%; max-width:400px; text-align:center;">
+      <h3 style="margin-top:0; color:#e67e22;">Resolve Tie</h3>
+      <p style="color:#555; font-size:0.95em; margin-bottom:15px;">Select the player closest to the starting East seat:</p>
+      <div id="tieOptions" style="display:flex; flex-direction:column; gap:10px;"></div>
+  </div>
 </body>
 </html>

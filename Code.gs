@@ -272,7 +272,8 @@ function startNewTournament(tournamentName, rulesetName) {
     updateSheetSetting(newSS, "Uma 1st", 15);
     updateSheetSetting(newSS, "Uma 2nd", 5);
     updateSheetSetting(newSS, "Chombo_Penalty", 20);
-    
+    updateSheetSetting(newSS, "Tiebreaker_Rule", "split");
+
     return "Success: Created '" + cleanName + "'";
   } catch (e) { throw new Error("Setup failed: " + e.message); }
 }
@@ -308,7 +309,8 @@ function getFullSettings() {
     topCutEnabled: read(dataSS, "Top_Cut_Enabled", "false"),
     topCutSize: read(dataSS, "Top_Cut_Size", 0),
     topCutRound: read(dataSS, "Top_Cut_Round", 0),
-    chomboValue: read(dataSS, "Chombo_Penalty", 20)
+    chomboValue: read(dataSS, "Chombo_Penalty", 20),
+    tiebreakerRule: read(dataSS, "Tiebreaker_Rule", "split")
   };
 }
 
@@ -323,6 +325,7 @@ function saveTournamentSettings(form) {
   updateSheetSetting(ss, "Top_Cut_Size", form.topCutSize);
   updateSheetSetting(ss, "Top_Cut_Round", form.topCutRound);
   updateSheetSetting(ss, "Chombo_Penalty", form.chomboValue);
+  updateSheetSetting(ss, "Tiebreaker_Rule", form.tiebreakerRule);
   return "Settings Saved.";
 }
 
@@ -801,7 +804,6 @@ function saveScores(form) {
   if (!sheet) sheet = ss.insertSheet("Scores");
   const settings = getFullSettings();
   const start = Number(settings.startPoints);
-  
   let u1 = Number(settings.uma1);
   let u2 = Number(settings.uma2);
 
@@ -809,22 +811,50 @@ function saveScores(form) {
   if (Math.abs(u1) < 1000 && u1 !== 0) u1 *= 1000;
   if (Math.abs(u2) < 1000 && u2 !== 0) u2 *= 1000;
 
+  const tieRule = settings.tiebreakerRule || 'split';
   const g = form.game;
-  
   let pData = [ { id: g.p1Id, s: Number(g.p1Score), k: 'p1' }, { id: g.p2Id, s: Number(g.p2Score), k: 'p2' }, { id: g.p3Id, s: Number(g.p3Score), k: 'p3' }, { id: g.p4Id, s: Number(g.p4Score), k: 'p4' } ];
-  pData.sort((a, b) => b.s - a.s);
+  
   const bonuses = [u1, u2, -u2, -u1];
   let res = {};
-  pData.forEach((p, idx) => { res[p.k] = { raw: p.s, final: ((p.s - start) + bonuses[idx]) / 1000 }; });
+
+  // --- NEW TIEBREAKER LOGIC ---
+  if (tieRule === 'head_bump' && form.rankedIds) {
+      // Sort strictly by the resolved Head Bump order passed from the frontend modal
+      pData.sort((a, b) => {
+         if (b.s !== a.s) return b.s - a.s; // Score still takes absolute precedence
+         return form.rankedIds.indexOf(a.id) - form.rankedIds.indexOf(b.id);
+      });
+      pData.forEach((p, idx) => { res[p.k] = { raw: p.s, final: ((p.s - start) + bonuses[idx]) / 1000 }; });
+  } else {
+      // Split Uma (Default)
+      pData.sort((a, b) => b.s - a.s);
+      let bonusAllocations = [0, 0, 0, 0];
+      let i = 0;
+      while (i < 4) {
+          let j = i;
+          let sumBonus = 0;
+          // Identify groups of matching scores
+          while (j < 4 && pData[j].s === pData[i].s) {
+              sumBonus += bonuses[j];
+              j++;
+          }
+          // Average the combined uma across the tied positions
+          let avgBonus = sumBonus / (j - i);
+          for (let k = i; k < j; k++) {
+              bonusAllocations[k] = avgBonus;
+          }
+          i = j;
+      }
+      pData.forEach((p, idx) => { res[p.k] = { raw: p.s, final: ((p.s - start) + bonusAllocations[idx]) / 1000 }; });
+  }
+  // -----------------------------
 
   const check = checkIfScored(form.round, g.gameId);
   const rowData = [ new Date(), form.round, g.gameId, g.p1Id, res.p1.raw, res.p1.final, g.p2Id, res.p2.raw, res.p2.final, g.p3Id, res.p3.raw, res.p3.final, g.p4Id, res.p4.raw, res.p4.final, g.leftoverScore ];
-
+  
   if (check.scored && check.rowIndex) { sheet.getRange(check.rowIndex, 1, 1, rowData.length).setValues([rowData]); }
   else { sheet.appendRow(rowData); }
-  
-  // Decoupled Leaderboard writing for speed - Option 1
-  // updateLeaderboardSheet();
   
   return { success: true, message: check.scored ? "Updated existing score." : "Saved new score." };
 }
