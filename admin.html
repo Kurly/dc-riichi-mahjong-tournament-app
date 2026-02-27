@@ -116,14 +116,11 @@
           </div>
       </div>
 
-      <div style="margin-top:15px; background:#ffebee; padding:10px; border-radius:8px; border:1px solid #ffcdd2;">
+<div style="margin-top:15px; background:#ffebee; padding:10px; border-radius:8px; border:1px solid #ffcdd2;">
           <h3 style="margin:0 0 10px 0; color:#c62828; font-size:1em;">Penalty Configuration</h3>
           
           <label>Penalty Ruleset</label>
           <select id="newRuleset"></select>
-
-          <label>Chombo Penalty (Points)</label>
-          <input type="number" id="setChomboVal" placeholder="e.g. 20" inputmode="numeric" style="margin-bottom:0;">
       </div>
 
       <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
@@ -349,7 +346,7 @@ function renderAll() {
     }
 
     // --- RENDERERS ---
-    function renderSettings() {
+function renderSettings() {
         const s = DATA.settings;
         document.getElementById('activeTournamentLabel').textContent = "Active: " + s.activeName;
         document.getElementById('setUma1').value = s.uma1;
@@ -364,10 +361,6 @@ function renderAll() {
         document.getElementById('setTiebreaker').value = DATA.settings.tiebreakerRule || 'split';
         toggleSetTopCut();
         
-        if(document.getElementById('setChomboVal')) {
-            document.getElementById('setChomboVal').value = s.chomboValue;
-        }
-
         document.getElementById('linkSheet').href = DATA.url;
         
         const sel = document.getElementById('selExisting');
@@ -637,7 +630,6 @@ function actionSaveSettings() {
             topCutEnabled: document.getElementById('setTopCutEnabled').checked.toString(),
             topCutSize: document.getElementById('setTopCutSize').value,
             topCutRound: document.getElementById('setTopCutRound').value,
-            chomboValue: document.getElementById('setChomboVal').value,
             tiebreakerRule: document.getElementById('setTiebreaker').value 
         };
         google.script.run.withSuccessHandler(() => { alert("Saved"); refreshAndRender(); }).saveTournamentSettings(d);
@@ -883,7 +875,7 @@ function actionSaveSettings() {
         calculatePenalty();
     }
 
-    function calculatePenalty() {
+function calculatePenalty() {
         const type = document.getElementById('penType').value;
         const foulName = document.getElementById('penFoul').value;
         const display = document.getElementById('penCalcDisplay');
@@ -899,24 +891,13 @@ function actionSaveSettings() {
         if(!rule) return;
 
         let valStr = String(rule.penalty).trim();
-        let pts = 0;
-        let label = "";
+        
+        // Use Math.abs() so even if the user enters "-30" in the sheet, it passes a positive integer to the subtraction logic
+        let rawDeduction = parseFloat(rule.pointDeduction);
+        let pts = isNaN(rawDeduction) ? 0 : Math.abs(rawDeduction); 
+        let label = pts > 0 ? `-${pts} pts` : "0 pts";
 
-        if (valStr.toLowerCase() === "chombo") {
-            pts = parseInt(DATA.settings.chomboValue || 20);
-            label = `Chombo (-${pts} pts)`;
-        } else {
-            let numericVal = parseFloat(valStr);
-            if (!isNaN(numericVal)) {
-                pts = numericVal;
-                label = pts > 0 ? `-${pts} pts` : "0 pts";
-            } else {
-                pts = 0;
-                label = valStr;
-            }
-        }
-
-        display.innerHTML = `Penalty: <span style="color:#c0392b">${label}</span>`;
+        display.innerHTML = `Penalty: <span style="color:#c0392b">${label}</span><br><span style="font-size:0.85em; color:#777;">(${valStr})</span>`;
         hiddenVal.value = pts;
     }
   </script>

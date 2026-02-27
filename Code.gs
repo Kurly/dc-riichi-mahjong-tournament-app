@@ -88,10 +88,12 @@ function getPenaltyDefinitions() {
   let typeIdx = headers.indexOf("type");
   let foulIdx = headers.indexOf("foul");
   let penIdx = headers.indexOf("penalty");
+  let ptIdx = headers.indexOf("point deduction");
 
   if (typeIdx === -1) typeIdx = 0;
   if (foulIdx === -1) foulIdx = 1;
   if (penIdx === -1) penIdx = 2;
+  if (ptIdx === -1) ptIdx = 3;
 
   let defs = [];
   for(let i=1; i<data.length; i++) {
@@ -99,12 +101,12 @@ function getPenaltyDefinitions() {
         defs.push({
           type: data[i][typeIdx],
           foul: data[i][foulIdx],
-          penalty: data[i][penIdx]
+          penalty: data[i][penIdx],
+          pointDeduction: data[i][ptIdx]
         });
     }
   }
   return defs;
-}
 
 function getAllGamesData() {
   try {
@@ -220,7 +222,7 @@ function startNewTournament(tournamentName, rulesetName) {
   const masterFile = DriveApp.getFileById(master.getId());
   
   if (masterFile.getParents().hasNext()) {
-    DriveApp.getFileById(newId).moveTo(masterFile.getParents().next()); 
+    DriveApp.getFileById(newId).moveTo(masterFile.getParents().next());
   }
 
   try {
@@ -229,7 +231,7 @@ function startNewTournament(tournamentName, rulesetName) {
     
     // --- PENALTY LIST GENERATION ---
     const pList = newSS.insertSheet("Penalties_List");
-    pList.appendRow(["Type", "Foul", "Penalty"]); 
+    pList.appendRow(["Type", "Foul", "Penalty", "Point Deduction"]); 
     
     const masterPList = master.getSheetByName("Penalties_List");
     if (masterPList) {
@@ -239,31 +241,33 @@ function startNewTournament(tournamentName, rulesetName) {
         const tIdx = h.indexOf("type");
         const fIdx = h.indexOf("foul");
         const pIdx = h.indexOf("penalty");
-
+        const ptIdx = h.indexOf("point deduction");
+        
         if (rIdx > -1 && tIdx > -1 && fIdx > -1 && pIdx > -1) {
             let rowsToAdd = [];
             for (let i = 1; i < data.length; i++) {
                 if (String(data[i][rIdx]) === String(rulesetName)) {
-                    rowsToAdd.push([data[i][tIdx], data[i][fIdx], data[i][pIdx]]);
+                    let ptVal = (ptIdx > -1) ? data[i][ptIdx] : "0";
+                    rowsToAdd.push([data[i][tIdx], data[i][fIdx], data[i][pIdx], ptVal]);
                 }
             }
             if (rowsToAdd.length > 0) {
-                pList.getRange(2, 1, rowsToAdd.length, 3).setValues(rowsToAdd);
+                pList.getRange(2, 1, rowsToAdd.length, 4).setValues(rowsToAdd);
             }
         }
     } else {
-        pList.appendRow(["Major", "Example Penalty", "30"]);
+        pList.appendRow(["Major", "Example Penalty", "Chombo", "-20"]);
     }
 
     const sc = newSS.insertSheet("Scores");
     sc.appendRow(["Timestamp", "Round", "Game ID", "P1 ID", "Raw P1", "Formatted P1", "P2 ID", "Raw P2", "Formatted P2", "P3 ID", "Raw P3", "Formatted P3", "P4 ID", "Raw P4", "Formatted P4", "Leftover"]);
-    
     const pen = newSS.insertSheet("Penalties");
     pen.appendRow(["Timestamp", "Player ID", "Points Deducted", "Reason", "Round", "Table", "Notes"]);
     
     newSS.insertSheet("Pairings");
     newSS.insertSheet("Leaderboard");
-    const def = newSS.getSheetByName("Sheet1"); if (def) newSS.deleteSheet(def);
+    const def = newSS.getSheetByName("Sheet1");
+    if (def) newSS.deleteSheet(def);
 
     updateSheetSetting(master, "Active_Tournament_ID", newId);
     updateSheetSetting(master, "Active_Tournament_Name", cleanName);
@@ -273,7 +277,6 @@ function startNewTournament(tournamentName, rulesetName) {
     updateSheetSetting(newSS, "Starting Points", 30000);
     updateSheetSetting(newSS, "Uma 1st", 15);
     updateSheetSetting(newSS, "Uma 2nd", 5);
-    updateSheetSetting(newSS, "Chombo_Penalty", 20);
     updateSheetSetting(newSS, "Tiebreaker_Rule", "split");
 
     return "Success: Created '" + cleanName + "'";
@@ -311,7 +314,6 @@ function getFullSettings() {
     topCutEnabled: read(dataSS, "Top_Cut_Enabled", "false"),
     topCutSize: read(dataSS, "Top_Cut_Size", 0),
     topCutRound: read(dataSS, "Top_Cut_Round", 0),
-    chomboValue: read(dataSS, "Chombo_Penalty", 20),
     tiebreakerRule: read(dataSS, "Tiebreaker_Rule", "split")
   };
 }
@@ -326,7 +328,6 @@ function saveTournamentSettings(form) {
   updateSheetSetting(ss, "Top_Cut_Enabled", form.topCutEnabled);
   updateSheetSetting(ss, "Top_Cut_Size", form.topCutSize);
   updateSheetSetting(ss, "Top_Cut_Round", form.topCutRound);
-  updateSheetSetting(ss, "Chombo_Penalty", form.chomboValue);
   updateSheetSetting(ss, "Tiebreaker_Rule", form.tiebreakerRule);
   return "Settings Saved.";
 }
@@ -1173,4 +1174,5 @@ function getPlayerScheduleMatrix() {
   });
 
   return { maxRound: maxRound, players: list };
+}
 }
