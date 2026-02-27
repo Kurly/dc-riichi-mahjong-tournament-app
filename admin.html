@@ -612,7 +612,7 @@ function actionGenerateRound() {
         }).generateNextRound(buckets, addSubs);
     }
 
-    function actionSaveSettings() {
+function actionSaveSettings() {
         showBusy("Saving...");
         const d = { 
             uma1: document.getElementById('setUma1').value, 
@@ -623,7 +623,7 @@ function actionGenerateRound() {
             topCutEnabled: document.getElementById('setTopCutEnabled').checked.toString(),
             topCutSize: document.getElementById('setTopCutSize').value,
             topCutRound: document.getElementById('setTopCutRound').value,
-            chomboValue: document.getElementById('setChomboVal').value
+            chomboValue: document.getElementById('setChomboVal').value,
             tiebreakerRule: document.getElementById('setTiebreaker').value 
         };
         google.script.run.withSuccessHandler(() => { alert("Saved"); refreshAndRender(); }).saveTournamentSettings(d);
