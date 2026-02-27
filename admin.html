@@ -307,7 +307,7 @@
       });
     }
 
-function renderAll() {
+    function renderAll() {
         renderSettings();
         renderRoster();
         renderPairings();
@@ -337,7 +337,6 @@ function renderAll() {
             if (el) el.innerHTML = rOpts;
         });
         
-        // Auto-trigger the secondary dropdowns to match the selected round
         if(maxGeneratedRound >= 1) {
              renderGameSelect();
              renderSwapTables();
@@ -346,7 +345,7 @@ function renderAll() {
     }
 
     // --- RENDERERS ---
-function renderSettings() {
+    function renderSettings() {
         const s = DATA.settings;
         document.getElementById('activeTournamentLabel').textContent = "Active: " + s.activeName;
         document.getElementById('setUma1').value = s.uma1;
@@ -358,14 +357,17 @@ function renderSettings() {
         document.getElementById('setTopCutEnabled').checked = (s.topCutEnabled === "true");
         document.getElementById('setTopCutSize').value = s.topCutSize;
         document.getElementById('setTopCutRound').value = s.topCutRound;
-        document.getElementById('setTiebreaker').value = DATA.settings.tiebreakerRule || 'split';
+        document.getElementById('setTiebreaker').value = s.tiebreakerRule || 'split';
         toggleSetTopCut();
         
         document.getElementById('linkSheet').href = DATA.url;
         
         const sel = document.getElementById('selExisting');
-        sel.innerHTML = DATA.tournaments.length ? "" : "<option>No other files</option>";
-        DATA.tournaments.forEach(t => sel.innerHTML += `<option value="${t.id}">${t.name}</option>`);
+        if (!DATA.tournaments.length) {
+            sel.innerHTML = "<option>No other files</option>";
+        } else {
+            sel.innerHTML = DATA.tournaments.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+        }
     }
 
     function toggleSetTopCut() {
@@ -376,40 +378,42 @@ function renderSettings() {
     function renderRulesetOptions() {
         const sel = document.getElementById('newRuleset');
         if (!sel || !DATA.rulesets) return;
-        sel.innerHTML = '';
-        DATA.rulesets.forEach(r => {
-            const opt = document.createElement('option');
-            opt.value = r;
-            opt.innerText = r;
-            sel.appendChild(opt);
-        });
+        sel.innerHTML = DATA.rulesets.map(r => `<option value="${r}">${r}</option>`).join('');
     }
 
     function renderRoster() {
         const tbody = document.getElementById('rosterBody');
         document.getElementById('rosterCount').textContent = `(${DATA.players.length})`;
-        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='3' style='text-align:center;'>No players</td></tr>";
-        DATA.players.forEach(p => {
+        
+        if(!DATA.players.length) {
+            tbody.innerHTML = "<tr><td colspan='3' style='text-align:center;'>No players</td></tr>";
+            return;
+        }
+        
+        tbody.innerHTML = DATA.players.map(p => {
             const safe = p.name.replace(/'/g, "\\'");
-            tbody.innerHTML += `<tr><td style="color:#3498db; font-weight:bold;">${p.id}</td><td>${p.name}</td><td style="text-align:right;"><button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button><button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button></td></tr>`;
-        });
+            return `<tr><td style="color:#3498db; font-weight:bold;">${p.id}</td><td>${p.name}</td><td style="text-align:right;"><button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button><button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button></td></tr>`;
+        }).join('');
     }
 
     function renderPairings() {
         const div = document.getElementById('pairingsDisplay');
-        if(!DATA.schedule || !DATA.schedule.length) { div.innerHTML = "<div style='text-align:center;color:#999;padding:20px;'>No Pairings</div>"; return; }
+        if(!DATA.schedule || !DATA.schedule.length) { 
+            div.innerHTML = "<div style='text-align:center;color:#999;padding:20px;'>No Pairings</div>"; 
+            return; 
+        }
         
         let html = "";
         DATA.schedule.forEach(r => {
             html += `<div class="pair-round-header">Round ${r.round}</div><table class="pair-table">`;
-            r.tables.forEach(t => {
+            html += r.tables.map(t => {
                 let badge = "";
                 if(t.bucket) {
                     let colors = {'A':'#2ecc71','B':'#3498db','C':'#9b59b6','D':'#e67e22','E':'#e74c3c'};
                     badge = `<span style="background:${colors[t.bucket]||'#95a5a6'};color:white;padding:2px 6px;border-radius:4px;font-size:0.8em;margin-left:5px;">${t.bucket}</span>`;
                 }
-                html += `<tr><td class="t-num" style="white-space:nowrap;">${t.id}${badge}</td><td>${t.p1}</td><td>${t.p2}</td><td>${t.p3}</td><td>${t.p4}</td></tr>`;
-            });
+                return `<tr><td class="t-num" style="white-space:nowrap;">${t.id}${badge}</td><td>${t.p1}</td><td>${t.p2}</td><td>${t.p3}</td><td>${t.p4}</td></tr>`;
+            }).join('');
             html += `</table>`;
         });
         div.innerHTML = html;
@@ -465,15 +469,10 @@ function renderSettings() {
 
     function populateBucketDropdown() {
         const sel = document.getElementById('bucketSelect');
-        sel.innerHTML = "";
         if(!DATA.pairingState.validBuckets) return;
-        DATA.pairingState.validBuckets.forEach(opt => {
-            const el = document.createElement('option');
-            el.value = opt.val;
-            el.text = opt.label;
-            if(opt.val == DATA.pairingState.lastBuckets) el.selected = true;
-            sel.appendChild(el);
-        });
+        sel.innerHTML = DATA.pairingState.validBuckets.map(opt => 
+            `<option value="${opt.val}" ${opt.val == DATA.pairingState.lastBuckets ? 'selected' : ''}>${opt.label}</option>`
+        ).join('');
     }
 
     // --- ACTIONS ---
@@ -482,7 +481,6 @@ function renderSettings() {
         google.script.run.withSuccessHandler(d => { DATA = d; renderAll(); hideBusy(); }).getInitialAdminData();
     }
     
- // NEW: Lightweight refresh for scoring only
     function refreshScoringOnly() {
         showBusy("Refreshing Scores...");
         google.script.run.withSuccessHandler(d => {
@@ -490,7 +488,7 @@ function renderSettings() {
             DATA.scoreLog = d.scoreLog;
             renderGameSelect();
             renderScoreLog();
-            renderPairingStatus(); // Added to unlock the pairings button dynamically
+            renderPairingStatus();
             hideBusy();
         }).getScoringUpdateData();
     }
@@ -502,7 +500,6 @@ function renderSettings() {
         const total = getVal('val_p1') + getVal('val_p2') + getVal('val_p3') + getVal('val_p4') + getVal('valLeftover');
         if(total !== target) return alert(`Total mismatch! Required: ${target}, Current: ${total}`);
 
-        // Grab the player names from the local game object for the prompt
         const r = document.getElementById('selRound').value;
         const gid = document.getElementById('selGame').value;
         const gameObj = DATA.allGames[r].find(g => String(g.id) === String(gid));
@@ -514,7 +511,6 @@ function renderSettings() {
             { id: document.getElementById('pid_p4').value, name: gameObj.p4.name, s: getVal('val_p4') }
         ];
 
-        // Sort by score to group ties
         pList.sort((a,b) => b.s - a.s);
         let rankedIds = [];
 
@@ -526,7 +522,6 @@ function renderSettings() {
                 group.push(pList[j]);
                 j++;
             }
-            // If there's a tie and Head Bump is ON, prompt the user
             if (group.length > 1 && DATA.settings.tiebreakerRule === 'head_bump') {
                 let resolved = await resolveTieGroup(group);
                 rankedIds.push(...resolved.map(p => p.id));
@@ -539,7 +534,7 @@ function renderSettings() {
         showBusy("Saving...");
         const payload = { 
             round: r, 
-            rankedIds: rankedIds, // We pass the explicit resolved order to the server
+            rankedIds: rankedIds, 
             game: { 
                 gameId: gid, 
                 p1Id: document.getElementById('pid_p1').value, p1Score: getVal('val_p1'), 
@@ -556,7 +551,8 @@ function renderSettings() {
             refreshScoringOnly();
         }).withFailureHandler(e => { alert(e); hideBusy(); }).saveScores(payload);
     }
-function resolveTieGroup(group) {
+
+    function resolveTieGroup(group) {
         return new Promise(async resolve => {
             let resolvedOrder = [];
             let remaining = [...group];
@@ -589,25 +585,23 @@ function resolveTieGroup(group) {
             });
         });
     }
-function actionGenerateRound() {
+
+    function actionGenerateRound() {
         const buckets = document.getElementById('bucketSelect').value || 1;
         let addSubs = false;
         
-        // If it's round 1 and the players aren't divisible by 4, ask to add SUBs
         if (DATA.pairingState.nextRound === 1 && DATA.players.length % 4 !== 0) {
             const subsNeeded = 4 - (DATA.players.length % 4);
             if (confirm(`Player count (${DATA.players.length}) is not divisible by 4.\n\nWould you like to auto-add ${subsNeeded} SUB player(s) to fill the seats?`)) {
                 addSubs = true;
             } else {
-                return; // Cancel generation if they decline, since we removed BYEs
+                return; 
             }
         } else {
-            // Standard confirmation for all other rounds / even counts
             if(!confirm(`Generate Round ${DATA.pairingState.nextRound}?`)) return;
         }
         
         showBusy("Generating...");
-        // Pass the addSubs flag to the backend
         google.script.run.withSuccessHandler(res => {
             if (res.success === false) {
                 alert(res.message);
@@ -619,7 +613,7 @@ function actionGenerateRound() {
         }).generateNextRound(buckets, addSubs);
     }
 
-function actionSaveSettings() {
+    function actionSaveSettings() {
         showBusy("Saving...");
         const d = { 
             uma1: document.getElementById('setUma1').value, 
@@ -732,22 +726,23 @@ function actionSaveSettings() {
         const s1 = document.getElementById('swapTable1');
         const s2 = document.getElementById('swapTable2');
         let games = DATA.allGames[r] || [];
-        let ops = '<option value="" selected>-- Select --</option>';
-        games.forEach(g => { ops += `<option value="${g.id}">Table ${g.id}</option>`; });
-        s1.innerHTML = ops; s1.disabled = false;
-        s2.innerHTML = ops; s2.disabled = false;
+        let html = '<option value="" selected>-- Select --</option>';
+        html += games.map(g => `<option value="${g.id}">Table ${g.id}</option>`).join('');
+        s1.innerHTML = html; s1.disabled = false;
+        s2.innerHTML = html; s2.disabled = false;
         document.getElementById('swapPlayer1').innerHTML = "";
         document.getElementById('swapPlayer2').innerHTML = "";
     }
+    
     function renderSwapPlayers(n) {
         const r = document.getElementById('swapRound').value;
         const tId = document.getElementById(`swapTable${n}`).value;
         const pSel = document.getElementById(`swapPlayer${n}`);
-        pSel.innerHTML = "";
         let game = (DATA.allGames[r] || []).find(g => String(g.id) === String(tId));
-        if(!game) return;
-        ['p1','p2','p3','p4'].forEach(k => { pSel.innerHTML += `<option value="${game[k].id}">${game[k].name}</option>`; });
+        if(!game) { pSel.innerHTML = ""; return; }
+        pSel.innerHTML = ['p1','p2','p3','p4'].map(k => `<option value="${game[k].id}">${game[k].name}</option>`).join('');
     }
+    
     function renderGameSelect() {
         const r = document.getElementById('selRound').value;
         const sel = document.getElementById('selGame');
@@ -755,9 +750,14 @@ function actionSaveSettings() {
         const unscored = games.filter(g => !g.isScored).map(g => g.id).sort((a,b)=>a-b);
         document.getElementById('unscoredBox').style.display = unscored.length ? 'block' : 'none';
         document.getElementById('unscoredList').textContent = unscored.join(", ");
-        sel.innerHTML = '<option value="" disabled selected>-- Select Table --</option>';
-        if(!games.length) sel.innerHTML = '<option disabled>No tables</option>';
-        games.forEach(g => { sel.innerHTML += `<option value="${g.id}">Table ${g.id}${g.isScored ? ' ✓' : ''}</option>`; });
+        
+        let html = '<option value="" disabled selected>-- Select Table --</option>';
+        if(!games.length) {
+            sel.innerHTML = '<option disabled>No tables</option>';
+        } else {
+            html += games.map(g => `<option value="${g.id}">Table ${g.id}${g.isScored ? ' ✓' : ''}</option>`).join('');
+            sel.innerHTML = html;
+        }
         sel.disabled = false;
         document.getElementById('scoreArea').style.display = 'none';
     }
@@ -774,14 +774,14 @@ function actionSaveSettings() {
             const isScored = res.scored;
             document.getElementById('editWarning').style.display = isScored ? 'block' : 'none';
             document.getElementById('btnSubmitScore').textContent = isScored ? "Update Score" : "Submit Score";
-            let html = "";
             let scores = res.scores || {};
-            ['p1','p2','p3','p4'].forEach(k => {
+            
+            let html = ['p1','p2','p3','p4'].map(k => {
                let p = game[k];
                let val = isScored ? scores[k] : "";
-               // Added the [+/-] button here
-               html += `<div class="score-row"><span class="player-label">${p.name} <span class="id-tag">(${p.id})</span></span><input type="hidden" id="pid_${k}" value="${p.id}"><input type="number" id="val_${k}" class="score-val" value="${val}" placeholder="Pts" oninput="checkSum()"><button type="button" class="btn-icon-orange" onclick="toggleMinus('val_${k}')" style="margin-left: 5px; padding: 10px;">[+/-]</button></div>`;
-            });
+               return `<div class="score-row"><span class="player-label">${p.name} <span class="id-tag">(${p.id})</span></span><input type="hidden" id="pid_${k}" value="${p.id}"><input type="number" id="val_${k}" class="score-val" value="${val}" placeholder="Pts" oninput="checkSum()"><button type="button" class="btn-icon-orange" onclick="toggleMinus('val_${k}')" style="margin-left: 5px; padding: 10px;">[+/-]</button></div>`;
+            }).join('');
+            
             document.getElementById('scoreRows').innerHTML = html;
             document.getElementById('valLeftover').value = isScored ? scores.leftover : "";
             checkSum();
@@ -789,7 +789,6 @@ function actionSaveSettings() {
         }).checkIfScored(r, gid, game.p1.id, game.p2.id, game.p3.id, game.p4.id);
     }
     
-    // New function to handle the minus toggle
     function toggleMinus(inputId) {
       const inputField = document.getElementById(inputId);
       if (inputField && inputField.value !== "") {
@@ -809,22 +808,29 @@ function actionSaveSettings() {
         else if (diff === 0) { box.className = "calc-box calc-good"; box.innerText = "✅ Check Sum: OK"; } 
         else { box.className = "calc-box calc-bad"; box.innerText = `⚠️ ${diff>0?"Missing":"Over"} ${Math.abs(diff)}`; }
     }
+    
     function renderScoreLog() {
         const body = document.getElementById('scoreLogBody');
-        body.innerHTML = "";
-        DATA.scoreLog.forEach(r => {
-            body.innerHTML += `<tr><td style="font-size:0.85em; color:#7f8c8d;">${r.date}</td><td style="font-weight:bold; text-align:center;">${r.round}-${r.game}</td><td style="font-size:0.9em;">${r.p1}<br>${r.p2}<br>${r.p3}<br>${r.p4}<div style="font-size:0.8em; color:#999; margin-top:4px;">Sticks: ${r.leftover}</div></td></tr>`;
-        });
+        if(!DATA.scoreLog.length) {
+            body.innerHTML = "<tr><td colspan='3' style='text-align:center;'>No scores recorded yet.</td></tr>";
+            return;
+        }
+        body.innerHTML = DATA.scoreLog.map(r => 
+            `<tr><td style="font-size:0.85em; color:#7f8c8d;">${r.date}</td><td style="font-weight:bold; text-align:center;">${r.round}-${r.game}</td><td style="font-size:0.9em;">${r.p1}<br>${r.p2}<br>${r.p3}<br>${r.p4}<div style="font-size:0.8em; color:#999; margin-top:4px;">Sticks: ${r.leftover}</div></td></tr>`
+        ).join('');
     }
     
     // --- PENALTY RENDERERS ---
     function renderPenalties() {
         const body = document.getElementById('penHistory');
-        body.innerHTML = "";
-        DATA.penalties.forEach(p => {
+        if(!DATA.penalties.length) {
+            body.innerHTML = "<tr><td colspan='7' style='text-align:center;'>No penalties recorded.</td></tr>";
+            return;
+        }
+        body.innerHTML = DATA.penalties.map(p => {
             let ptsDisplay = (p.points == 0) ? `<span style="color:#aaa;">0</span>` : `<span style="color:#c0392b; font-weight:bold;">-${p.points}</span>`;
-            body.innerHTML += `<tr><td style="font-size:0.85em; color:#7f8c8d;">${p.date}</td><td style="font-weight:bold; text-align:center;">${p.round}</td><td style="font-weight:bold; text-align:center;">${p.table}</td><td style="font-weight:bold;">${p.name}</td><td>${ptsDisplay}</td><td style="color:#555; font-size:0.9em;">${p.reason}</td><td style="color:#555; font-size:0.9em;">${p.notes}</td></tr>`;
-        });
+            return `<tr><td style="font-size:0.85em; color:#7f8c8d;">${p.date}</td><td style="font-weight:bold; text-align:center;">${p.round}</td><td style="font-weight:bold; text-align:center;">${p.table}</td><td style="font-weight:bold;">${p.name}</td><td>${ptsDisplay}</td><td style="color:#555; font-size:0.9em;">${p.reason}</td><td style="color:#555; font-size:0.9em;">${p.notes}</td></tr>`;
+        }).join('');
     }
 
     function renderPenaltyTables() {
@@ -832,50 +838,59 @@ function actionSaveSettings() {
         const sel = document.getElementById('penTable');
         const pSel = document.getElementById('penPlayer');
         const games = DATA.allGames[r] || [];
-        sel.innerHTML = '<option value="" selected>-- Select Table --</option>';
-        if(!games.length) sel.innerHTML = '<option disabled>No tables</option>';
-        games.forEach(g => { sel.innerHTML += `<option value="${g.id}">Table ${g.id}</option>`; });
+        
+        let html = '<option value="" selected>-- Select Table --</option>';
+        if(!games.length) {
+            sel.innerHTML = '<option disabled>No tables</option>';
+        } else {
+            html += games.map(g => `<option value="${g.id}">Table ${g.id}</option>`).join('');
+            sel.innerHTML = html;
+        }
         sel.disabled = false;
         pSel.innerHTML = "<option>Select Table First</option>"; 
         pSel.disabled = true;
     }
+    
     function renderPenaltyPlayers() {
         const r = document.getElementById('penRound').value;
         const t = document.getElementById('penTable').value;
         const pSel = document.getElementById('penPlayer');
         const game = (DATA.allGames[r] || []).find(g => String(g.id) === String(t));
         if(!game) return;
-        pSel.innerHTML = '<option value="">-- Select Player --</option>';
-        ['p1','p2','p3','p4'].forEach(k => { pSel.innerHTML += `<option value="${game[k].id}">${game[k].name}</option>`; });
+        
+        let html = '<option value="">-- Select Player --</option>';
+        html += ['p1','p2','p3','p4'].map(k => `<option value="${game[k].id}">${game[k].name}</option>`).join('');
+        pSel.innerHTML = html;
         pSel.disabled = false;
     }
 
-    // New Penalty Logic Renderers
     function renderPenaltyTypes() {
         if(!DATA.penaltyList) return;
         const typeSet = new Set(DATA.penaltyList.map(p => p.type));
         const sel = document.getElementById('penType');
-        sel.innerHTML = '<option value="">-- Select Category --</option>';
-        typeSet.forEach(t => {
-            sel.innerHTML += `<option value="${t}">${t}</option>`;
-        });
+        let html = '<option value="">-- Select Category --</option>';
+        typeSet.forEach(t => { html += `<option value="${t}">${t}</option>`; });
+        sel.innerHTML = html;
     }
 
     function renderPenaltyFouls() {
         const type = document.getElementById('penType').value;
         const sel = document.getElementById('penFoul');
-        sel.innerHTML = '<option value="">-- Select Foul --</option>';
-        if(!type) { sel.disabled = true; return; }
+        if(!type) { 
+            sel.innerHTML = '<option value="">-- Select Foul --</option>';
+            sel.disabled = true; 
+            return; 
+        }
         
         const fouls = DATA.penaltyList.filter(p => p.type === type);
-        fouls.forEach(f => {
-            sel.innerHTML += `<option value="${f.foul}">${f.foul}</option>`;
-        });
+        let html = '<option value="">-- Select Foul --</option>';
+        html += fouls.map(f => `<option value="${f.foul}">${f.foul}</option>`).join('');
+        sel.innerHTML = html;
         sel.disabled = false;
         calculatePenalty();
     }
 
-function calculatePenalty() {
+    function calculatePenalty() {
         const type = document.getElementById('penType').value;
         const foulName = document.getElementById('penFoul').value;
         const display = document.getElementById('penCalcDisplay');
@@ -891,16 +906,22 @@ function calculatePenalty() {
         if(!rule) return;
 
         let valStr = String(rule.penalty).trim();
-        
-        // Use Math.abs() so even if the user enters "-30" in the sheet, it passes a positive integer to the subtraction logic
         let rawDeduction = parseFloat(rule.pointDeduction);
-        let pts = isNaN(rawDeduction) ? 0 : Math.abs(rawDeduction); 
+        
+        // Robust fallback for non-numeric penalty inputs (e.g. "Chombo")
+        if (isNaN(rawDeduction)) {
+            let fallbackMatch = valStr.match(/-?\d+/);
+            rawDeduction = fallbackMatch ? parseFloat(fallbackMatch[0]) : 0;
+        }
+        
+        let pts = Math.abs(rawDeduction); 
         let label = pts > 0 ? `-${pts} pts` : "0 pts";
 
         display.innerHTML = `Penalty: <span style="color:#c0392b">${label}</span><br><span style="font-size:0.85em; color:#777;">(${valStr})</span>`;
         hiddenVal.value = pts;
     }
   </script>
+  
   <div id="tieOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9998;"></div>
   <div id="tieModal" class="card" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:9999; box-shadow:0 10px 30px rgba(0,0,0,0.2); width:90%; max-width:400px; text-align:center;">
       <h3 style="margin-top:0; color:#e67e22;">Resolve Tie</h3>

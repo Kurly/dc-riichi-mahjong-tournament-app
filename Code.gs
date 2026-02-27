@@ -26,14 +26,42 @@ function doGet(e) {
 function getScriptUrl() { return ScriptApp.getService().getUrl(); }
 
 /* ==================================================
-   2. DATA AGGREGATION (SINGLE LOAD)
+   2. DATA AGGREGATION & CACHING
    ================================================== */
 
-function getInitialAdminData() {
-  const ss = getDataSS();
+// Cache objects to prevent multiple calls to the spreadsheet in a single execution
+let _cachedDataSS = null;
+let _settingsMap = null;
+let _cachedSettings = null;
+
+function getDataSS() {
+  if (_cachedDataSS) return _cachedDataSS;
+  const master = SpreadsheetApp.getActiveSpreadsheet();
+  const settingsSheet = master.getSheetByName("Settings");
+  if (!settingsSheet) return master; 
   
+  const data = settingsSheet.getDataRange().getValues();
+  let targetId = "";
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] == "Active_Tournament_ID") { 
+      targetId = data[i][1]; 
+      break; 
+    }
+  }
+  
+  if (targetId) {
+    try { 
+      _cachedDataSS = SpreadsheetApp.openById(targetId);
+      return _cachedDataSS;
+    } catch (e) { return master; }
+  }
+  return master;
+}
+
+function getInitialAdminData() {
+  const settings = getFullSettings();
   return {
-    settings: getFullSettings(),
+    settings: settings,
     tournaments: getTournamentList(),
     rulesets: getUniqueRulesets(), 
     url: getSpreadsheetUrl(),
@@ -47,10 +75,8 @@ function getInitialAdminData() {
   };
 }
 
-// NEW: Lightweight fetch for just the scoring tab
-
 function getScoringUpdateData() {
-  SpreadsheetApp.flush(); // Safety net to force latest sheet data before reading
+  SpreadsheetApp.flush();
   return {
     scoreLog: getScoreLog(),
     allGames: getAllGamesData()
@@ -58,7 +84,7 @@ function getScoringUpdateData() {
 }
 
 function getUniqueRulesets() {
-  const master = getMasterSS();
+  const master = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = master.getSheetByName("Penalties_List");
   if (!sheet) return ["Default"];
   
@@ -67,7 +93,6 @@ function getUniqueRulesets() {
 
   const headers = data[0].map(h => String(h).toLowerCase());
   const ruleIdx = headers.indexOf("ruleset");
-  
   if (ruleIdx === -1) return ["Default"];
 
   let rulesets = new Set();
@@ -107,6 +132,7 @@ function getPenaltyDefinitions() {
     }
   }
   return defs;
+}
 
 function getAllGamesData() {
   try {
@@ -115,7 +141,7 @@ function getAllGamesData() {
     const scoreSheet = ss.getSheetByName("Scores"); 
     if(!pairSheet) return {};
     
-    let scoredMap = {}; 
+    let scoredMap = {};
     if (scoreSheet && scoreSheet.getLastRow() > 1) {
         const sData = scoreSheet.getDataRange().getValues();
         for (let i = 1; i < sData.length; i++) {
@@ -134,7 +160,6 @@ function getAllGamesData() {
     for(let row of data) {
       if(!row[0]) continue; 
       let cell = row[0].toString().toUpperCase();
-      
       if(cell.includes("ROUND")) {
         let match = cell.match(/\d+/);
         currentRound = match ? parseInt(match[0]) : 0;
@@ -145,10 +170,8 @@ function getAllGamesData() {
         let tableId = parseInt(row[0]);
         if (!isNaN(tableId)) {
           if (!gamesByRound[currentRound]) gamesByRound[currentRound] = [];
-          
           const getP = (id) => ({ id: id, name: pMap[id] || id });
           let isScored = (scoredMap[String(currentRound)] && scoredMap[String(currentRound)].has(String(tableId)));
-
           gamesByRound[currentRound].push({ 
               id: tableId, 
               p1: row[1] ? getP(row[1]) : { id: "?", name: "?" }, 
@@ -171,23 +194,6 @@ function getAllGamesData() {
    3. DATABASE & SETTINGS
    ================================================== */
 
-function getMasterSS() { return SpreadsheetApp.getActiveSpreadsheet(); }
-
-function getDataSS() {
-  const master = getMasterSS();
-  const settingsSheet = master.getSheetByName("Settings");
-  if (!settingsSheet) return master; 
-  const data = settingsSheet.getDataRange().getValues();
-  let targetId = "";
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][0] == "Active_Tournament_ID") { targetId = data[i][1]; break; }
-  }
-  if (targetId) {
-    try { return SpreadsheetApp.openById(targetId); } catch (e) { return master; }
-  }
-  return master;
-}
-
 function getSpreadsheetUrl() { return getDataSS().getUrl(); }
 
 function getTournamentList() {
@@ -207,7 +213,7 @@ function getTournamentList() {
 }
 
 function switchTournament(fileId) {
-  const master = getMasterSS();
+  const master = SpreadsheetApp.getActiveSpreadsheet();
   const file = DriveApp.getFileById(fileId);
   updateSheetSetting(master, "Active_Tournament_ID", fileId);
   updateSheetSetting(master, "Active_Tournament_Name", file.getName());
@@ -215,7 +221,7 @@ function switchTournament(fileId) {
 }
 
 function startNewTournament(tournamentName, rulesetName) {
-  const master = getMasterSS();
+  const master = SpreadsheetApp.getActiveSpreadsheet();
   const cleanName = tournamentName || "New Tournament " + new Date().toLocaleDateString();
   const newSS = SpreadsheetApp.create(cleanName);
   const newId = newSS.getId();
@@ -229,10 +235,9 @@ function startNewTournament(tournamentName, rulesetName) {
     newSS.insertSheet("Players").appendRow(["Player ID", "Name"]);
     newSS.insertSheet("Settings").appendRow(["Key", "Value"]);
     
-    // --- PENALTY LIST GENERATION ---
+    // Penalty list generation
     const pList = newSS.insertSheet("Penalties_List");
-    pList.appendRow(["Type", "Foul", "Penalty", "Point Deduction"]); 
-    
+    pList.appendRow(["Type", "Foul", "Penalty", "Point Deduction"]);
     const masterPList = master.getSheetByName("Penalties_List");
     if (masterPList) {
         const data = masterPList.getDataRange().getValues();
@@ -251,9 +256,7 @@ function startNewTournament(tournamentName, rulesetName) {
                     rowsToAdd.push([data[i][tIdx], data[i][fIdx], data[i][pIdx], ptVal]);
                 }
             }
-            if (rowsToAdd.length > 0) {
-                pList.getRange(2, 1, rowsToAdd.length, 4).setValues(rowsToAdd);
-            }
+            if (rowsToAdd.length > 0) pList.getRange(2, 1, rowsToAdd.length, 4).setValues(rowsToAdd);
         }
     } else {
         pList.appendRow(["Major", "Example Penalty", "Chombo", "-20"]);
@@ -261,6 +264,7 @@ function startNewTournament(tournamentName, rulesetName) {
 
     const sc = newSS.insertSheet("Scores");
     sc.appendRow(["Timestamp", "Round", "Game ID", "P1 ID", "Raw P1", "Formatted P1", "P2 ID", "Raw P2", "Formatted P2", "P3 ID", "Raw P3", "Formatted P3", "P4 ID", "Raw P4", "Formatted P4", "Leftover"]);
+    
     const pen = newSS.insertSheet("Penalties");
     pen.appendRow(["Timestamp", "Player ID", "Points Deducted", "Reason", "Round", "Table", "Notes"]);
     
@@ -278,7 +282,7 @@ function startNewTournament(tournamentName, rulesetName) {
     updateSheetSetting(newSS, "Uma 1st", 15);
     updateSheetSetting(newSS, "Uma 2nd", 5);
     updateSheetSetting(newSS, "Tiebreaker_Rule", "split");
-
+    
     return "Success: Created '" + cleanName + "'";
   } catch (e) { throw new Error("Setup failed: " + e.message); }
 }
@@ -288,22 +292,28 @@ function updateSheetSetting(ss, key, val) {
   if (!sheet) sheet = ss.insertSheet("Settings");
   const data = sheet.getDataRange().getValues();
   for (let i = 0; i < data.length; i++) {
-    if (data[i][0] == key) { sheet.getRange(i + 1, 2).setValue(val); return; }
+    if (data[i][0] == key) { 
+      sheet.getRange(i + 1, 2).setValue(val);
+      return; 
+    }
   }
   sheet.appendRow([key, val]);
 }
 
 function getFullSettings() {
-  const master = getMasterSS();
+  if (_cachedSettings) return _cachedSettings;
+  const master = SpreadsheetApp.getActiveSpreadsheet();
   const dataSS = getDataSS();
+  
   const read = (ss, k, d) => {
-    const s = ss.getSheetByName("Settings");
-    if(!s) return d;
-    const v = s.getDataRange().getValues();
-    for(let i=0; i<v.length; i++) if(v[i][0] == k) return v[i][1];
+    let sheet = ss.getSheetByName("Settings");
+    if(!sheet) return d;
+    const v = sheet.getDataRange().getValues();
+    for(let i=0; i<v.length; i++) if(v[i][0] == k) return v[i][1] === "" ? d : v[i][1];
     return d;
   };
-  return {
+
+  _cachedSettings = {
     activeName: read(master, "Active_Tournament_Name", "No Active Tournament"),
     activeId: read(master, "Active_Tournament_ID", ""),
     uma1: read(dataSS, "Uma 1st", 15),
@@ -316,6 +326,7 @@ function getFullSettings() {
     topCutRound: read(dataSS, "Top_Cut_Round", 0),
     tiebreakerRule: read(dataSS, "Tiebreaker_Rule", "split")
   };
+  return _cachedSettings;
 }
 
 function saveTournamentSettings(form) {
@@ -333,15 +344,18 @@ function saveTournamentSettings(form) {
 }
 
 function readSetting(ss, key, def) {
-  let sheet = ss.getSheetByName("Settings");
-  if(!sheet) return def;
-  const data = sheet.getDataRange().getValues();
-  for(let i=0; i<data.length; i++) {
-    if(data[i][0] == key) { 
-      return data[i][1] === "" ? def : data[i][1]; 
+  if (!_settingsMap) {
+    _settingsMap = new Map();
+    let sheet = ss.getSheetByName("Settings");
+    if(sheet) {
+      const data = sheet.getDataRange().getValues();
+      for(let i=0; i<data.length; i++) {
+        _settingsMap.set(data[i][0], data[i][1]);
+      }
     }
   }
-  return def;
+  let val = _settingsMap.get(key);
+  return (val !== undefined && val !== "") ? val : def;
 }
 
 /* ==================================================
@@ -353,7 +367,10 @@ function getNextSafeId(sheet) {
   let max = 0;
   for (let i = 1; i < data.length; i++) {
     const match = data[i][0].toString().match(/\d+/);
-    if (match) { let n = parseInt(match[0], 10); if (n > max) max = n; }
+    if (match) { 
+        let n = parseInt(match[0], 10); 
+        if (n > max) max = n;
+    }
   }
   return max + 1;
 }
@@ -384,9 +401,10 @@ function deletePlayer(playerId) {
   if (!sheet) return getPlayers();
   const data = sheet.getDataRange().getValues();
   for (let i = data.length - 1; i >= 1; i--) {
-    if (data[i][0].toString() == playerId.toString()) { sheet.deleteRow(i + 1); }
+    if (data[i][0].toString() == playerId.toString()) { 
+        sheet.deleteRow(i + 1);
+    }
   }
-  SpreadsheetApp.flush(); 
   return getPlayers();
 }
 
@@ -431,7 +449,7 @@ function getPlayerMap() {
 }
 
 /* ==================================================
-   5. PAIRING LOGIC (1000 ATTEMPTS)
+   5. PAIRING LOGIC
    ================================================== */
 
 function getPairingState() {
@@ -457,14 +475,15 @@ function getPairingState() {
   let validOptions = [];
   let pCount = players.length;
   if (pCount % 4 !== 0) pCount += (4 - (pCount % 4));
-  
   for (let b = 1; b <= pCount / 4; b++) {
     let baseSize = Math.floor((pCount / b) / 4) * 4;
     if (baseSize < 4 && b > 1) break; 
     let lastBucketSize = pCount - (baseSize * (b - 1));
     if (lastBucketSize >= 4 && lastBucketSize % 4 === 0) {
-        let label = (b === 1) ? `1 Bucket (${pCount})` : 
-                    (baseSize === lastBucketSize) ? `${b} Buckets (${baseSize} each)` : 
+        let label = (b === 1) ?
+                    `1 Bucket (${pCount})` : 
+                    (baseSize === lastBucketSize) ?
+                    `${b} Buckets (${baseSize} each)` : 
                     `${b} Buckets (${b-1}x${baseSize}, 1x${lastBucketSize})`;
         validOptions.push({ val: b, label: label });
     }
@@ -483,11 +502,9 @@ function generateNextRound(bucketCount, addSubs) {
   const ss = getDataSS();
   let pairSheet = ss.getSheetByName("Pairings");
   if (!pairSheet) pairSheet = ss.insertSheet("Pairings");
-  
   const state = getPairingState();
   const round = state.nextRound;
 
-  // --- Block generation if previous round is missing scores ---
   const allGames = getAllGamesData();
   const currentRound = round - 1;
   if (currentRound > 0 && allGames[currentRound]) {
@@ -498,29 +515,23 @@ function generateNextRound(bucketCount, addSubs) {
   }
 
   let players = getPlayers();
-
-  // --- NEW: Add SUB players if requested (Replaces BYE logic) ---
   if (addSubs && players.length % 4 !== 0) {
     const subsNeeded = 4 - (players.length % 4);
-    
-    // Count existing SUBs to number the new ones correctly
     let subCount = players.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
-    
     for (let i = 0; i < subsNeeded; i++) {
       subCount++;
-      addPlayer(`SUB ${subCount}`); 
+      addPlayer(`SUB ${subCount}`);
     }
-    players = getPlayers(); // Refetch the updated roster
+    players = getPlayers();
   }
 
-  // --- Hard block if we still aren't divisible by 4 ---
   if (players.length % 4 !== 0) {
     return { success: false, message: "Cannot generate round. The number of players must be a multiple of 4." };
   }
 
-  let history = {};
-  players.forEach(p => history[p.id] = []);
-    
+  // Optimize pairing lookup using Map of Sets
+  let historyMap = new Map();
+  players.forEach(p => historyMap.set(p.id, new Set()));
   if (pairSheet.getLastRow() > 1) {
     const data = pairSheet.getDataRange().getValues();
     let inData = false;
@@ -531,9 +542,8 @@ function generateNextRound(bucketCount, addSubs) {
         let pIds = [row[1], row[2], row[3], row[4]];
         for(let i=0; i<4; i++) {
           for(let j=0; j<4; j++) {
-            if(i !== j) {
-                if(!history[pIds[i]]) history[pIds[i]] = [];
-                history[pIds[i]].push(pIds[j]);
+            if(i !== j && historyMap.has(pIds[i])) {
+                historyMap.get(pIds[i]).add(pIds[j]);
             }
           }
         }
@@ -545,12 +555,11 @@ function generateNextRound(bucketCount, addSubs) {
   const cutEnabled = readSetting(ss, "Top_Cut_Enabled", "false") === "true";
   const cutSize = parseInt(readSetting(ss, "Top_Cut_Size", 0));
   const cutRound = parseInt(readSetting(ss, "Top_Cut_Round", 0));
-  
   let isCutActive = readSetting(ss, "Top_Cut_Active", "false") === "true";
   let savedCutIDs = readSetting(ss, "Top_Cut_Player_IDs", "").split(",").filter(x => x);
   let buckets = [];
-
   let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive);
+  
   if (shouldTrigger && cutRound > 0) {
       if (round <= cutRound) shouldTrigger = false;
   }
@@ -558,7 +567,6 @@ function generateNextRound(bucketCount, addSubs) {
   if (shouldTrigger) {
       isCutActive = true;
       const standings = getStandingsData();
-      
       let ranked = players.map(p => {
           let s = standings.find(x => x.id === p.id);
           return { ...p, pts: s ? s.totalScore : -9999 };
@@ -598,7 +606,6 @@ function generateNextRound(bucketCount, addSubs) {
       if (mode === 'swiss') {
           const standings = getStandingsData();
           const getStats = (pid) => standings.find(x => x.id === pid);
-          
           topPool.sort((a,b) => {
               let sa = getStats(a.id); let sb = getStats(b.id);
               return (sb ? sb.auxScore : -9999) - (sa ? sa.auxScore : -9999);
@@ -609,7 +616,6 @@ function generateNextRound(bucketCount, addSubs) {
               let sa = getStats(a.id); let sb = getStats(b.id);
               return (sb ? sb.totalScore : -9999) - (sa ? sa.totalScore : -9999);
           });
-          
           let remBuckets = Math.max(1, bucketCount - 1);
           let total = restPool.length;
           let baseSize = Math.floor((total / remBuckets) / 4) * 4;
@@ -628,18 +634,14 @@ function generateNextRound(bucketCount, addSubs) {
       }
   }
   else {
-      if (mode === 'swiss') {
-          buckets = recalculateSwissBuckets(players, bucketCount);
-      } else {
-          buckets.push(players.sort(() => Math.random() - 0.5));
-      }
+      if (mode === 'swiss') buckets = recalculateSwissBuckets(players, bucketCount);
+      else buckets.push(players.sort(() => Math.random() - 0.5));
   }
   
   updateSheetSetting(ss, "Last_Bucket_Count", bucketCount);
 
   let roundTables = [];
   let tableCounter = 1;
-
   buckets.forEach((bucket, bIdx) => {
     let pool = [...bucket];
     let bucketChar = String.fromCharCode(65 + bIdx); 
@@ -658,7 +660,7 @@ function generateNextRound(bucketCount, addSubs) {
                 [pool[i], pool[j]] = [pool[j], pool[i]];
             }
             let candidates = pool.slice(0, 4);
-            let repeats = countRepeats(candidates, history);
+            let repeats = countRepeats(candidates, historyMap);
             if (repeats === 0) { bestTable = candidates; minRepeats = 0; break; }
             if (repeats < minRepeats) { minRepeats = repeats; bestTable = candidates; }
           }
@@ -696,50 +698,18 @@ function recalculateSwissBuckets(players, bucketCount) {
     return buckets;
 }
 
-function getPreviousBuckets(ss, targetRound, currentPlayers) {
-    const pairSheet = ss.getSheetByName("Pairings");
-    if(!pairSheet) return [];
-    const data = pairSheet.getDataRange().getValues();
-    let playerBucketMap = {};
-    let bucketsFound = new Set();
-    let inRound = false;
-    for(let row of data) {
-        if(!row[0]) continue;
-        let cell = row[0].toString().toUpperCase();
-        if (cell.includes("ROUND")) {
-            let match = cell.match(/\d+/);
-            inRound = (match && parseInt(match[0]) === targetRound);
-            continue;
-        }
-        if (inRound && row.length > 5) {
-            let bucketChar = row[5];
-            if (bucketChar) {
-                bucketsFound.add(bucketChar);
-                [1,2,3,4].forEach(c => { if(row[c]) playerBucketMap[row[c]] = bucketChar; });
-            }
-        }
-    }
-    let sortedKeys = Array.from(bucketsFound).sort();
-    let buckets = sortedKeys.map(() => []);
-    currentPlayers.forEach(p => {
-        let bChar = playerBucketMap[p.id];
-        let idx = sortedKeys.indexOf(bChar);
-        if (idx !== -1) buckets[idx].push(p);
-        else if (buckets.length > 0) buckets[buckets.length - 1].push(p);
-    });
-    return buckets;
-}
-
-function countRepeats(players, history) {
+function countRepeats(players, historyMap) {
   let repeats = 0;
   for(let i=0; i<players.length; i++) {
     let pid = players[i].id;
-    if(pid === "BYE") continue;
-    let past = history[pid] || [];
+    if(pid === "BYE" || pid.startsWith("SUB")) continue;
+    let past = historyMap.get(pid);
+    if (!past) continue;
+    
     for(let j=i+1; j<players.length; j++) {
       let pid2 = players[j].id;
-      if(pid2 === "BYE") continue;
-      if(past.includes(pid2)) repeats++;
+      if(pid2 === "BYE" || pid2.startsWith("SUB")) continue;
+      if(past.has(pid2)) repeats++;
     }
   }
   return repeats;
@@ -810,48 +780,39 @@ function saveScores(form) {
   let u1 = Number(settings.uma1);
   let u2 = Number(settings.uma2);
 
-  // AUTO-SCALE LOW NUMBERS (e.g. 15 -> 15000)
   if (Math.abs(u1) < 1000 && u1 !== 0) u1 *= 1000;
   if (Math.abs(u2) < 1000 && u2 !== 0) u2 *= 1000;
 
   const tieRule = settings.tiebreakerRule || 'split';
   const g = form.game;
   let pData = [ { id: g.p1Id, s: Number(g.p1Score), k: 'p1' }, { id: g.p2Id, s: Number(g.p2Score), k: 'p2' }, { id: g.p3Id, s: Number(g.p3Score), k: 'p3' }, { id: g.p4Id, s: Number(g.p4Score), k: 'p4' } ];
-  
   const bonuses = [u1, u2, -u2, -u1];
   let res = {};
-
-  // --- NEW TIEBREAKER LOGIC ---
+  
+  // Clean grouping for Split Uma logic
   if (tieRule === 'head_bump' && form.rankedIds) {
-      // Sort strictly by the resolved Head Bump order passed from the frontend modal
       pData.sort((a, b) => {
-         if (b.s !== a.s) return b.s - a.s; // Score still takes absolute precedence
+         if (b.s !== a.s) return b.s - a.s; 
          return form.rankedIds.indexOf(a.id) - form.rankedIds.indexOf(b.id);
       });
       pData.forEach((p, idx) => { res[p.k] = { raw: p.s, final: ((p.s - start) + bonuses[idx]) / 1000 }; });
   } else {
-      // Split Uma (Default)
       pData.sort((a, b) => b.s - a.s);
-      let bonusAllocations = [0, 0, 0, 0];
-      let i = 0;
-      while (i < 4) {
-          let j = i;
-          let sumBonus = 0;
-          // Identify groups of matching scores
-          while (j < 4 && pData[j].s === pData[i].s) {
-              sumBonus += bonuses[j];
-              j++;
-          }
-          // Average the combined uma across the tied positions
-          let avgBonus = sumBonus / (j - i);
-          for (let k = i; k < j; k++) {
-              bonusAllocations[k] = avgBonus;
-          }
-          i = j;
-      }
-      pData.forEach((p, idx) => { res[p.k] = { raw: p.s, final: ((p.s - start) + bonusAllocations[idx]) / 1000 }; });
+      let scoreGroups = new Map();
+      pData.forEach((p, i) => {
+          if (!scoreGroups.has(p.s)) scoreGroups.set(p.s, { players: [], totalBonus: 0 });
+          let group = scoreGroups.get(p.s);
+          group.players.push(p);
+          group.totalBonus += bonuses[i];
+      });
+      
+      scoreGroups.forEach((group, score) => {
+          let avgBonus = group.totalBonus / group.players.length;
+          group.players.forEach(p => {
+              res[p.k] = { raw: p.s, final: ((p.s - start) + avgBonus) / 1000 };
+          });
+      });
   }
-  // -----------------------------
 
   const check = checkIfScored(form.round, g.gameId);
   const rowData = [ new Date(), form.round, g.gameId, g.p1Id, res.p1.raw, res.p1.final, g.p2Id, res.p2.raw, res.p2.final, g.p3Id, res.p3.raw, res.p3.final, g.p4Id, res.p4.raw, res.p4.final, g.leftoverScore ];
@@ -859,10 +820,8 @@ function saveScores(form) {
   if (check.scored && check.rowIndex) { sheet.getRange(check.rowIndex, 1, 1, rowData.length).setValues([rowData]); }
   else { sheet.appendRow(rowData); }
   
-  // FORCE GOOGLE TO WRITE THE QUEUE TO THE SPREADSHEET IMMEDIATELY
   SpreadsheetApp.flush(); 
   updateLeaderboardSheet();
-  
   return { success: true, message: check.scored ? "Updated existing score." : "Saved new score." };
 }
 
@@ -870,12 +829,12 @@ function addPenalty(round, table, playerId, points, reason, notes) {
   const ss = getDataSS();
   let sheet = ss.getSheetByName("Penalties");
   if (!sheet) { 
-      sheet = ss.insertSheet("Penalties"); 
+      sheet = ss.insertSheet("Penalties");
       sheet.appendRow(["Timestamp", "Player ID", "Points Deducted", "Reason", "Round", "Table", "Notes"]); 
   }
   
-  // NEW: Smart Scale for Penalties
   let pts = Number(points);
+  if (isNaN(pts)) pts = 0; 
   if (Math.abs(pts) < 1000 && pts !== 0) pts *= 1000;
 
   sheet.appendRow([new Date(), playerId, pts, reason, round, table, notes]);
@@ -889,7 +848,6 @@ function getRecentPenalties() {
   if (!sheet || sheet.getLastRow() <= 1) return [];
   const data = sheet.getDataRange().getValues();
   const pMap = getPlayerMap();
-  
   return data.slice(1).reverse().map(r => {
     let dateStr = "N/A";
     try { if (r[0]) dateStr = Utilities.formatDate(new Date(r[0]), Session.getScriptTimeZone(), "MM/dd HH:mm"); } catch(e) { dateStr = r[0].toString(); }
@@ -937,18 +895,13 @@ function getStandingsData() {
   let stats = {};
   Object.keys(pMap).forEach(id => { 
       stats[id] = { 
-          id: id, 
-          name: pMap[id], 
-          totalPts: 0, 
-          postCutPts: 0,
-          preCutPts: 0,
-          played: 0, 
-          pen: 0, 
+          id: id, name: pMap[id], 
+          totalPts: 0, postCutPts: 0, preCutPts: 0,
+          played: 0, pen: 0, 
           isDNF: pMap[id].startsWith("[DNF]"),
           isTopCut: topSet.has(id)
       }; 
   });
-
   if(sSheet && sSheet.getLastRow() > 1) {
     const data = sSheet.getDataRange().getValues();
     for(let i=1; i<data.length; i++) {
@@ -960,9 +913,7 @@ function getStandingsData() {
         if(pid && stats[pid]) { 
             stats[pid].totalPts += pts;
             stats[pid].played++;
-            if (hasCut && rNum >= startRound) {
-                stats[pid].postCutPts += pts;
-            }
+            if (hasCut && rNum >= startRound) stats[pid].postCutPts += pts;
         }
       });
     }
@@ -974,48 +925,37 @@ function getStandingsData() {
       if (!pData[i][1]) continue;
       let rNum = parseInt(pData[i][4]);
       const pid = pData[i][1]; 
-      const deduct = Number(pData[i][2]);
-      // Convert raw points to formatted points (divide by 1000)
-      const deductFmt = deduct / 1000;
-      
+      const deductFmt = Number(pData[i][2]) / 1000;
       if(pid && stats[pid]) { 
           stats[pid].totalPts -= deductFmt; 
-          stats[pid].pen += deductFmt; // Track total penalties
-          if (hasCut && rNum >= startRound) {
-              stats[pid].postCutPts -= deductFmt;
-          }
+          stats[pid].pen += deductFmt;
+          if (hasCut && rNum >= startRound) stats[pid].postCutPts -= deductFmt;
       }
     }
   }
 
-  // Pre-cut Calc
   Object.values(stats).forEach(p => {
       p.preCutPts = p.totalPts - p.postCutPts;
       p.sortScore = p.isTopCut ? p.postCutPts : p.totalPts; 
   });
-
+  
   let topGroup = Object.values(stats).filter(p => p.isTopCut).sort((a,b) => b.sortScore - a.sortScore);
   let restGroup = Object.values(stats).filter(p => !p.isTopCut).sort((a,b) => {
       if (a.isDNF !== b.isDNF) return a.isDNF ? 1 : -1;
       return b.sortScore - a.sortScore;
   });
-
-  const formatP = (p, rank, groupType) => ({
+  
+  const formatP = (p, rank) => ({
       rank: p.isDNF ? "-" : rank,
-      id: p.id,
-      name: p.name,
-      displayScore: p.totalPts, 
-      auxScore: p.postCutPts,
-      totalScore: p.totalPts,
-      played: p.played,
-      penalties: p.pen,
-      isDNF: p.isDNF,
-      isTopCut: p.isTopCut
+      id: p.id, name: p.name,
+      displayScore: p.totalPts, auxScore: p.postCutPts, totalScore: p.totalPts,
+      played: p.played, penalties: p.pen,
+      isDNF: p.isDNF, isTopCut: p.isTopCut
   });
-
+  
   return [
-      ...topGroup.map((p, i) => formatP(p, i+1, 'top')),
-      ...restGroup.map((p, i) => formatP(p, topGroup.length + i + 1, 'rest'))
+      ...topGroup.map((p, i) => formatP(p, i+1)),
+      ...restGroup.map((p, i) => formatP(p, topGroup.length + i + 1))
   ];
 }
 
@@ -1024,7 +964,8 @@ function updateLeaderboardSheet() {
   let sheet = ss.getSheetByName("Leaderboard");
   if (!sheet) sheet = ss.insertSheet("Leaderboard");
   const standings = getStandingsData();
-  const rows = standings.map(p => [ p.rank, p.id, p.name, p.played, p.displayScore ]); // Use displayScore
+  const rows = standings.map(p => [ p.rank, p.id, p.name, p.played, p.displayScore ]);
+  
   sheet.clear();
   sheet.appendRow(["Rank", "Player ID", "Name", "Games Played", "Total Points"]);
   if (rows.length > 0) sheet.getRange(2, 1, rows.length, 5).setValues(rows);
@@ -1037,8 +978,8 @@ function updateLeaderboardSheet() {
 function getHistoryMatrix(excludeRound) {
   const ss = getDataSS();
   const sheet = ss.getSheetByName("Pairings");
-  let history = {};
-  if (!sheet) return history;
+  let historyMap = new Map();
+  if (!sheet) return historyMap;
   const data = sheet.getDataRange().getValues();
   let currentRound = 0;
   for (let row of data) {
@@ -1055,15 +996,16 @@ function getHistoryMatrix(excludeRound) {
       for (let i = 0; i < 4; i++) {
         for (let j = 0; j < 4; j++) {
           if (i !== j) {
-            let p1 = pIds[i]; let p2 = pIds[j];
-            if (!history[p1]) history[p1] = [];
-            if (!history[p1].includes(p2)) history[p1].push(p2);
+            let p1 = pIds[i];
+            let p2 = pIds[j];
+            if (!historyMap.has(p1)) historyMap.set(p1, new Set());
+            historyMap.get(p1).add(p2);
           }
         }
       }
     }
   }
-  return history;
+  return historyMap;
 }
 
 function swapPairings(round, t1Id, p1Id, t2Id, p2Id, force) {
@@ -1071,7 +1013,8 @@ function swapPairings(round, t1Id, p1Id, t2Id, p2Id, force) {
   const sheet = ss.getSheetByName("Pairings");
   const data = sheet.getDataRange().getValues();
   const pMap = getPlayerMap();
-  let rIdx1 = -1, rIdx2 = -1; let row1, row2; let inRound = false;
+  let rIdx1 = -1, rIdx2 = -1; let row1, row2;
+  let inRound = false;
 
   for (let i = 0; i < data.length; i++) {
     if(!data[i][0]) continue;
@@ -1092,15 +1035,15 @@ function swapPairings(round, t1Id, p1Id, t2Id, p2Id, force) {
   if (cIdx1 < 1 || cIdx2 < 1) return { success: false, message: "Player positions changed. Refresh and try again." };
 
   if (!force) {
-    const hist = getHistoryMatrix(round);
+    const histMap = getHistoryMatrix(round);
     let conflicts = [];
     for (let k = 1; k <= 4; k++) {
       let opp = row2[k];
-      if (opp !== p2Id && opp !== "" && hist[p1Id] && hist[p1Id].includes(opp)) conflicts.push(`${pMap[p1Id] || p1Id} played ${pMap[opp] || opp}`);
+      if (opp !== p2Id && opp !== "" && histMap.has(p1Id) && histMap.get(p1Id).has(opp)) conflicts.push(`${pMap[p1Id] || p1Id} played ${pMap[opp] || opp}`);
     }
     for (let k = 1; k <= 4; k++) {
       let opp = row1[k];
-      if (opp !== p1Id && opp !== "" && hist[p2Id] && hist[p2Id].includes(opp)) conflicts.push(`${pMap[p2Id] || p2Id} played ${pMap[opp] || opp}`);
+      if (opp !== p1Id && opp !== "" && histMap.has(p2Id) && histMap.get(p2Id).has(opp)) conflicts.push(`${pMap[p2Id] || p2Id} played ${pMap[opp] || opp}`);
     }
     if (conflicts.length > 0) return { success: false, warning: true, message: "⚠️ Conflict Warning:\n" + conflicts.join("\n") + "\n\nSwap anyway?" };
   }
@@ -1109,10 +1052,6 @@ function swapPairings(round, t1Id, p1Id, t2Id, p2Id, force) {
   sheet.getRange(rIdx2 + 1, cIdx2 + 1).setValue(p1Id);
   return { success: true, message: "✅ Players swapped successfully." };
 }
-
-/* ==================================================
-   MISSING FUNCTION: PLAYER SCHEDULE MATRIX
-   ================================================== */
 
 function getPlayerScheduleMatrix() {
   const ss = getDataSS();
@@ -1124,7 +1063,6 @@ function getPlayerScheduleMatrix() {
   Object.keys(pMap).forEach(k => { 
       players[k] = { id: k, name: pMap[k], tables: {}, scores: {} }; 
   });
-
   let maxRound = 0;
 
   if (pairSheet && pairSheet.getLastRow() > 1) {
@@ -1172,7 +1110,5 @@ function getPlayerScheduleMatrix() {
       let nb = parseInt(b.id.replace(/\D/g, '')) || 0;
       return na - nb;
   });
-
   return { maxRound: maxRound, players: list };
-}
 }
