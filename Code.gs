@@ -221,7 +221,7 @@ function switchTournament(fileId) {
 }
 
 function startNewTournament(tournamentName, rulesetName) {
-  const master = getMasterSS();
+  const master = SpreadsheetApp.getActiveSpreadsheet();
   const cleanName = tournamentName || "New Tournament " + new Date().toLocaleDateString();
   const newSS = SpreadsheetApp.create(cleanName);
   const newId = newSS.getId();
@@ -238,8 +238,7 @@ function startNewTournament(tournamentName, rulesetName) {
     
     // --- PENALTY LIST GENERATION ---
     const pList = newSS.insertSheet("Penalties_List");
-    pList.appendRow(["Type", "Foul", "Penalty", "Point Deduction"]); 
-    
+    pList.appendRow(["Type", "Foul", "Penalty", "Point Deduction"]);
     const masterPList = master.getSheetByName("Penalties_List");
     if (masterPList) {
         const data = masterPList.getDataRange().getValues();
@@ -285,8 +284,8 @@ function startNewTournament(tournamentName, rulesetName) {
     updateSheetSetting(newSS, "Uma 1st", 15);
     updateSheetSetting(newSS, "Uma 2nd", 5);
     updateSheetSetting(newSS, "Tiebreaker_Rule", "split");
-    updateSheetSetting(newSS, "Pre_Tourney_Enabled", "false"); // NEW
-    updateSheetSetting(newSS, "Tourney_Begun", "false"); // NEW
+    updateSheetSetting(newSS, "Pre_Tourney_Enabled", "false"); 
+    updateSheetSetting(newSS, "Tourney_Begun", "false"); 
 
     return "Success: Created '" + cleanName + "'";
   } catch (e) { throw new Error("Setup failed: " + e.message); }
