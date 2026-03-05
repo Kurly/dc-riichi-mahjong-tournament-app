@@ -356,7 +356,7 @@
     }
 
     // --- RENDERERS ---
-    function renderSettings() {
+function renderSettings() {
         const s = DATA.settings;
         document.getElementById('activeTournamentLabel').textContent = "Active: " + s.activeName;
         document.getElementById('setUma1').value = s.uma1;
@@ -365,11 +365,13 @@
         document.getElementById('setRounds').value = s.roundCount;
         
         document.getElementById('setPairMode').value = s.pairingMode || 'scramble';
-        document.getElementById('setTopCutEnabled').checked = (s.topCutEnabled === "true");
+        // Updated to handle Google Sheets boolean conversion safely
+        document.getElementById('setTopCutEnabled').checked = (String(s.topCutEnabled) === "true");
         document.getElementById('setTopCutSize').value = s.topCutSize;
         document.getElementById('setTopCutRound').value = s.topCutRound;
         document.getElementById('setTiebreaker').value = DATA.settings.tiebreakerRule || 'split';
-        document.getElementById('setPreTourneyEnabled').checked = (s.preTourneyEnabled === "true");
+        // Updated to handle Google Sheets boolean conversion safely
+        document.getElementById('setPreTourneyEnabled').checked = (String(s.preTourneyEnabled) === "true");
         toggleSetTopCut();
         
         document.getElementById('linkSheet').href = DATA.url;
@@ -507,8 +509,10 @@ function renderPairingStatus() {
             unscoredCount = DATA.allGames[currentRound].filter(g => !g.isScored).length;
         }
         
-        const isPreTourney = s.preTourneyEnabled === "true";
-        const hasBegun = s.tourneyBegun === "true";
+        // Updated to handle Google Sheets boolean conversion safely
+        const isPreTourney = String(s.preTourneyEnabled) === "true";
+        const hasBegun = String(s.tourneyBegun) === "true";
+        const isTopCut = String(s.topCutEnabled) === "true";
 
         // Intercept for Pre-Tournament phase
         if (isPreTourney && ps.nextRound === 2 && !hasBegun) {
@@ -532,7 +536,7 @@ function renderPairingStatus() {
             btn.innerText = "Tournament Finished";
         } else if (unscoredCount > 0) {
             let info = `Next: <b>Round ${ps.nextRound}</b><br>Mode: <span style="color:#2980b9">${(s.pairingMode||"scramble").toUpperCase()}</span>`;
-            if (s.topCutEnabled === "true") {
+            if (isTopCut) {
                 let rInfo = s.topCutRound > 0 ? ` (After R${s.topCutRound})` : "";
                 info += `<br>Top Cut: <span style="color:#e67e22">Active (Top ${s.topCutSize}${rInfo})</span>`;
             }
@@ -542,7 +546,7 @@ function renderPairingStatus() {
             btn.innerText = `Waiting for Scores`;
         } else {
             let info = `Next: <b>Round ${ps.nextRound}</b><br>Mode: <span style="color:#2980b9">${(s.pairingMode||"scramble").toUpperCase()}</span>`;
-            if (s.topCutEnabled === "true") {
+            if (isTopCut) {
                 let rInfo = s.topCutRound > 0 ? ` (After R${s.topCutRound})` : "";
                 info += `<br>Top Cut: <span style="color:#e67e22">Active (Top ${s.topCutSize}${rInfo})</span>`;
             }

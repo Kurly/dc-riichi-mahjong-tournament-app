@@ -1228,7 +1228,10 @@ function beginTournamentRepair() {
         }
     }
 
-    // --- Execute Repair Algorithm ---
+    // --- Execute Repair Algorithm & Track Movements ---
+    let moves = [];
+    let subsAdded = [];
+
     // 1. Set missing players to null
     tables.forEach(t => {
         for (let s = 0; s < 4; s++) {
@@ -1247,8 +1250,18 @@ function beginTournamentRepair() {
                     for (let s = 3; s >= 0; s--) {
                         if (k === i && s <= j) continue;
                         if (tables[k].seats[s] !== null) {
-                            tables[i].seats[j] = tables[k].seats[s];
+                            let movingPid = tables[k].seats[s];
+                            
+                            // Look up the player's name for the alert box
+                            let pObj = players.find(p => p.id === movingPid);
+                            let pName = pObj ? pObj.name : movingPid;
+                            
+                            tables[i].seats[j] = movingPid;
                             tables[k].seats[s] = null;
+                            
+                            // Record the movement (Using i + 1 because that represents their new dynamic table number)
+                            moves.push(`${pName} moved from Table ${tables[k].tableId} -> Table ${i + 1}`);
+                            
                             found = true;
                             break;
                         }
@@ -1276,6 +1289,8 @@ function beginTournamentRepair() {
                     let subName = "SUB " + currentSubs;
                     playersSheet.appendRow([subId, subName, true]); // Give sub an ID and automatically Check In
                     lastTable.seats[j] = subId;
+                    
+                    subsAdded.push(`${subName} added to Table ${tables.length}`);
                 }
             }
             SpreadsheetApp.flush();
@@ -1297,5 +1312,15 @@ function beginTournamentRepair() {
     }
 
     updateSheetSetting(ss, "Tourney_Begun", "true");
-    return { success: true, message: "Tournament begun and Round 1 pairings repaired!" };
+
+    // --- Build Final Alert Message ---
+    let finalMessage = "Tournament begun and Round 1 pairings repaired!";
+    if (moves.length > 0) {
+        finalMessage += "\n\n--- Player Movements ---\n" + moves.join("\n");
+    }
+    if (subsAdded.length > 0) {
+        finalMessage += "\n\n--- Subs Added ---\n" + subsAdded.join("\n");
+    }
+
+    return { success: true, message: finalMessage };
 }
