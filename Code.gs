@@ -853,6 +853,8 @@ function getRecentPenalties() {
     try { if (r[0]) dateStr = Utilities.formatDate(new Date(r[0]), Session.getScriptTimeZone(), "MM/dd HH:mm"); } catch(e) { dateStr = r[0].toString(); }
     return { 
         date: dateStr, 
+        rawDate: r[0] ? new Date(r[0]).getTime() : 0,
+        playerId: r[1],
         name: pMap[r[1]] || r[1], 
         points: r[2], 
         reason: r[3], 
@@ -861,6 +863,29 @@ function getRecentPenalties() {
         notes: (r[6] || "") 
     };
   });
+}
+
+function deletePenalty(rawDate, playerId) {
+  const ss = getDataSS();
+  const sheet = ss.getSheetByName("Penalties");
+  if (!sheet) return { success: false, message: "Penalties sheet not found." };
+  
+  const data = sheet.getDataRange().getValues();
+  
+  // Iterate backwards to safely delete the correct row 
+  for (let i = data.length - 1; i >= 1; i--) {
+    let rDate = data[i][0] ? new Date(data[i][0]).getTime() : 0;
+    let rPid = data[i][1];
+    
+    // Match based on the exact timestamp and Player ID
+    if (rDate === rawDate && String(rPid) === String(playerId)) {
+      sheet.deleteRow(i + 1);
+      updateLeaderboardSheet(); // Recalculate standings immediately
+      return { success: true, message: "Penalty deleted successfully." };
+    }
+  }
+  
+  return { success: false, message: "Penalty record not found." };
 }
 
 function getScoreLog() {

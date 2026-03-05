@@ -146,6 +146,9 @@
     </div>
     <div class="card">
       <h2>Roster <span id="rosterCount" style="font-size:0.8em; color:#888;"></span></h2>
+      
+      <input type="text" id="searchRoster" placeholder="Search by name or ID..." onkeyup="filterRoster()" style="margin-bottom: 15px;">
+      
       <div style="overflow-x:auto;">
         <table class="data-table">
             <thead><tr><th>ID</th><th>Name</th><th style="width:100px; text-align:right;">Actions</th></tr></thead>
@@ -266,11 +269,11 @@
 
         <button class="btn btn-red" id="btnSubmitPenalty" onclick="actionSubmitPenalty()">Apply Deduction</button>
     </div>
-    <div class="card">
+<div class="card">
         <h2>History</h2>
         <div style="overflow-x:auto;">
             <table class="data-table">
-                <thead><tr><th style="width:70px;">Time</th><th style="width:30px;">Rd</th><th style="width:30px;">Tbl</th><th>Player</th><th>Pts</th><th>Reason</th><th>Notes</th></tr></thead>
+                <thead><tr><th style="width:70px;">Time</th><th style="width:30px;">Rd</th><th style="width:30px;">Tbl</th><th>Player</th><th>Pts</th><th>Reason</th><th>Notes</th><th style="text-align:right;">Actions</th></tr></thead>
                 <tbody id="penHistory"></tbody>
             </table>
         </div>
@@ -384,16 +387,38 @@
     function renderRoster() {
         const tbody = document.getElementById('rosterBody');
         document.getElementById('rosterCount').textContent = `(${DATA.players.length})`;
-        
-        if(!DATA.players.length) {
-            tbody.innerHTML = "<tr><td colspan='3' style='text-align:center;'>No players</td></tr>";
-            return;
-        }
-        
-        tbody.innerHTML = DATA.players.map(p => {
+        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='3' style='text-align:center;'>No players</td></tr>";
+        DATA.players.forEach(p => {
             const safe = p.name.replace(/'/g, "\\'");
-            return `<tr><td style="color:#3498db; font-weight:bold;">${p.id}</td><td>${p.name}</td><td style="text-align:right;"><button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button><button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button></td></tr>`;
-        }).join('');
+            tbody.innerHTML += `<tr><td style="color:#3498db; font-weight:bold;">${p.id}</td><td>${p.name}</td><td style="text-align:right;"><button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button><button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button></td></tr>`;
+        });
+        
+        // Re-apply filter if a search is currently active
+        if (typeof filterRoster === 'function') {
+            filterRoster();
+        }
+    }
+
+    // NEW FUNCTION
+    function filterRoster() {
+        const input = document.getElementById('searchRoster');
+        if (!input) return;
+        const filter = input.value.toLowerCase();
+        const tbody = document.getElementById('rosterBody');
+        const trs = tbody.getElementsByTagName('tr');
+
+        for (let i = 0; i < trs.length; i++) {
+            const tds = trs[i].getElementsByTagName('td');
+            if (tds.length > 1) { // Ignore the "No players" row
+                const idText = tds[0].textContent || tds[0].innerText;
+                const nameText = tds[1].textContent || tds[1].innerText;
+                if (idText.toLowerCase().indexOf(filter) > -1 || nameText.toLowerCase().indexOf(filter) > -1) {
+                    trs[i].style.display = "";
+                } else {
+                    trs[i].style.display = "none";
+                }
+            }
+        }
     }
 
     function renderPairings() {
@@ -820,17 +845,42 @@
         ).join('');
     }
     
-    // --- PENALTY RENDERERS ---
-    function renderPenalties() {
+function renderPenalties() {
         const body = document.getElementById('penHistory');
-        if(!DATA.penalties.length) {
-            body.innerHTML = "<tr><td colspan='7' style='text-align:center;'>No penalties recorded.</td></tr>";
-            return;
-        }
-        body.innerHTML = DATA.penalties.map(p => {
+        body.innerHTML = "";
+        DATA.penalties.forEach(p => {
             let ptsDisplay = (p.points == 0) ? `<span style="color:#aaa;">0</span>` : `<span style="color:#c0392b; font-weight:bold;">-${p.points}</span>`;
-            return `<tr><td style="font-size:0.85em; color:#7f8c8d;">${p.date}</td><td style="font-weight:bold; text-align:center;">${p.round}</td><td style="font-weight:bold; text-align:center;">${p.table}</td><td style="font-weight:bold;">${p.name}</td><td>${ptsDisplay}</td><td style="color:#555; font-size:0.9em;">${p.reason}</td><td style="color:#555; font-size:0.9em;">${p.notes}</td></tr>`;
-        }).join('');
+            body.innerHTML += `<tr>
+                <td style="font-size:0.85em; color:#7f8c8d;">${p.date}</td>
+                <td style="font-weight:bold; text-align:center;">${p.round}</td>
+                <td style="font-weight:bold; text-align:center;">${p.table}</td>
+                <td style="font-weight:bold;">${p.name}</td>
+                <td>${ptsDisplay}</td>
+                <td style="color:#555; font-size:0.9em;">${p.reason}</td>
+                <td style="color:#555; font-size:0.9em;">${p.notes}</td>
+                <td style="text-align:right;">
+                    <button class="btn-icon-red" onclick="actionDeletePenalty(${p.rawDate}, '${p.playerId}')">Del</button>
+                </td>
+            </tr>`;
+        });
+    }
+
+    function actionDeletePenalty(rawDate, playerId) {
+        if (!confirm("Are you sure you want to delete this penalty? The player's points will be restored.")) return;
+        
+        showBusy("Deleting Penalty...");
+        google.script.run.withSuccessHandler(res => {
+            if (!res.success) {
+                alert(res.message);
+                hideBusy();
+                return;
+            }
+            alert(res.message);
+            refreshAndRender(); 
+        }).withFailureHandler(err => {
+            alert("Error: " + err);
+            hideBusy();
+        }).deletePenalty(rawDate, playerId);
     }
 
     function renderPenaltyTables() {
