@@ -100,7 +100,13 @@
           <option value="split">Split Uma (Average the placement bonuses)</option>
           <option value="head_bump">Head Bump (Prompt for seat order)</option>
       </select>
-      
+      <div style="margin-top:15px; background:#f9f9f9; padding:10px; border-radius:8px; border:1px solid #eee;">
+          <div style="display:flex; align-items:center; gap:10px;">
+              <input type="checkbox" id="setPreTourneyEnabled" style="width:auto; margin:0;">
+              <label for="setPreTourneyEnabled" style="margin:0; font-weight:600;">Enable Pre-Tournament Pairings</label>
+          </div>
+          <div style="font-size:0.8em; color:#7f8c8d; margin-top:5px;">Requires players to Check In before starting the tournament. Unchecked players are automatically dropped and Round 1 pairings are condensed.</div>
+      </div>
       <div style="margin-top:15px; background:#f9f9f9; padding:10px; border-radius:8px; border:1px solid #eee;">
           <div style="display:flex; align-items:center; gap:10px;">
               <input type="checkbox" id="setTopCutEnabled" style="width:auto; margin:0;" onchange="toggleSetTopCut()">
@@ -144,14 +150,16 @@
       <textarea id="bulkText" rows="4" placeholder="Paste list of names here..."></textarea>
       <button class="btn btn-blue" id="btnBulk" onclick="actionBulk()">Import List</button>
     </div>
-    <div class="card">
-      <h2>Roster <span id="rosterCount" style="font-size:0.8em; color:#888;"></span></h2>
-      
+<div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+          <h2 style="margin:0;">Roster <span id="rosterCount" style="font-size:0.8em; color:#888;"></span></h2>
+          <button id="btnFilterCheckIn" class="btn btn-blue" style="width:auto; margin:0; padding:8px 15px; font-size:0.9em;" onclick="cycleCheckInFilter()">Filter: All</button>
+      </div>
       <input type="text" id="searchRoster" placeholder="Search by name or ID..." onkeyup="filterRoster()" style="margin-bottom: 15px;">
       
       <div style="overflow-x:auto;">
         <table class="data-table">
-            <thead><tr><th>ID</th><th>Name</th><th style="width:100px; text-align:right;">Actions</th></tr></thead>
+            <thead><tr><th style="width:80px;">Status</th><th>ID</th><th>Name</th><th style="width:100px; text-align:right;">Actions</th></tr></thead>
             <tbody id="rosterBody"></tbody>
         </table>
       </div>
@@ -360,17 +368,15 @@
         document.getElementById('setTopCutEnabled').checked = (s.topCutEnabled === "true");
         document.getElementById('setTopCutSize').value = s.topCutSize;
         document.getElementById('setTopCutRound').value = s.topCutRound;
-        document.getElementById('setTiebreaker').value = s.tiebreakerRule || 'split';
+        document.getElementById('setTiebreaker').value = DATA.settings.tiebreakerRule || 'split';
+        document.getElementById('setPreTourneyEnabled').checked = (s.preTourneyEnabled === "true");
         toggleSetTopCut();
         
         document.getElementById('linkSheet').href = DATA.url;
         
         const sel = document.getElementById('selExisting');
-        if (!DATA.tournaments.length) {
-            sel.innerHTML = "<option>No other files</option>";
-        } else {
-            sel.innerHTML = DATA.tournaments.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
-        }
+        sel.innerHTML = DATA.tournaments.length ? "" : "<option>No other files</option>";
+        DATA.tournaments.forEach(t => sel.innerHTML += `<option value="${t.id}">${t.name}</option>`);
     }
 
     function toggleSetTopCut() {
@@ -399,26 +405,69 @@
         }
     }
 
-    // NEW FUNCTION
+let currentCheckInFilter = 0; // 0=All, 1=Checked, 2=Missing
+    
+    function cycleCheckInFilter() {
+        currentCheckInFilter = (currentCheckInFilter + 1) % 3;
+        const btn = document.getElementById('btnFilterCheckIn');
+        if(currentCheckInFilter === 0) btn.innerText = "Filter: All";
+        if(currentCheckInFilter === 1) btn.innerText = "Filter: Checked In";
+        if(currentCheckInFilter === 2) btn.innerText = "Filter: Missing";
+        filterRoster();
+    }
+
     function filterRoster() {
         const input = document.getElementById('searchRoster');
-        if (!input) return;
-        const filter = input.value.toLowerCase();
+        const filterText = input ? input.value.toLowerCase() : "";
         const tbody = document.getElementById('rosterBody');
         const trs = tbody.getElementsByTagName('tr');
 
         for (let i = 0; i < trs.length; i++) {
             const tds = trs[i].getElementsByTagName('td');
-            if (tds.length > 1) { // Ignore the "No players" row
-                const idText = tds[0].textContent || tds[0].innerText;
-                const nameText = tds[1].textContent || tds[1].innerText;
-                if (idText.toLowerCase().indexOf(filter) > -1 || nameText.toLowerCase().indexOf(filter) > -1) {
-                    trs[i].style.display = "";
-                } else {
-                    trs[i].style.display = "none";
-                }
+            if (tds.length > 2) {
+                const statusTd = tds[0];
+                const idText = tds[1].textContent || tds[1].innerText;
+                const nameText = tds[2].textContent || tds[2].innerText;
+                
+                const isChecked = statusTd.querySelector('.btn-green') !== null;
+                
+                let textMatch = idText.toLowerCase().indexOf(filterText) > -1 || nameText.toLowerCase().indexOf(filterText) > -1;
+                let statusMatch = true;
+                if (currentCheckInFilter === 1 && !isChecked) statusMatch = false;
+                if (currentCheckInFilter === 2 && isChecked) statusMatch = false;
+
+                trs[i].style.display = (textMatch && statusMatch) ? "" : "none";
             }
         }
+    }
+
+    function renderRoster() {
+        const tbody = document.getElementById('rosterBody');
+        const checkedCount = DATA.players.filter(p => p.isCheckedIn).length;
+        document.getElementById('rosterCount').textContent = `(${checkedCount}/${DATA.players.length} Checked In)`;
+        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='4' style='text-align:center;'>No players</td></tr>";
+        
+        DATA.players.forEach(p => {
+            const safe = p.name.replace(/'/g, "\\'");
+            const checkClass = p.isCheckedIn ? "btn-green" : "btn-icon-orange";
+            const checkText = p.isCheckedIn ? "✓ IN" : "Check In";
+            tbody.innerHTML += `<tr>
+                <td style="width:80px;"><button class="btn ${checkClass}" style="width:100%; padding:5px; font-size:0.8em; margin:0;" onclick="actionToggleCheckIn('${p.id}')">${checkText}</button></td>
+                <td style="color:#3498db; font-weight:bold;">${p.id}</td>
+                <td>${p.name}</td>
+                <td style="text-align:right;">
+                    <button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button>
+                    <button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button>
+                </td>
+            </tr>`;
+        });
+        
+        if (typeof filterRoster === 'function') filterRoster();
+    }
+
+    function actionToggleCheckIn(id) {
+        showBusy("Updating...");
+        google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); hideBusy(); }).togglePlayerCheckIn(id);
     }
 
     function renderPairings() {
@@ -444,7 +493,7 @@
         div.innerHTML = html;
     }
 
-    function renderPairingStatus() {
+function renderPairingStatus() {
         const ps = DATA.pairingState;
         const div = document.getElementById('pairStatus');
         const btn = document.getElementById('btnGenRound');
@@ -458,6 +507,25 @@
             unscoredCount = DATA.allGames[currentRound].filter(g => !g.isScored).length;
         }
         
+        const isPreTourney = s.preTourneyEnabled === "true";
+        const hasBegun = s.tourneyBegun === "true";
+
+        // Intercept for Pre-Tournament phase
+        if (isPreTourney && ps.nextRound === 2 && !hasBegun) {
+            let missingCount = DATA.players.filter(p => !p.isCheckedIn).length;
+            div.innerHTML = `<b>Pre-Tournament Pairings Generated!</b><br>Players still missing: <span style="color:#e74c3c; font-weight:bold;">${missingCount}</span><br>Click Begin Tournament to finalize and remove missing players.`;
+            btn.disabled = false;
+            btn.innerText = "Begin Tournament";
+            btn.onclick = actionBeginTournament;
+            
+            const bucketUI = document.getElementById('swissOptions');
+            if (bucketUI) bucketUI.style.display = 'none';
+            return;
+        }
+
+        // Standard logic hook
+        btn.onclick = actionGenerateRound;
+
         if(ps.nextRound > ps.totalRounds) {
             div.innerHTML = `Tournament Complete (${ps.totalRounds} Rounds)`;
             btn.disabled = true;
@@ -480,7 +548,12 @@
             }
             div.innerHTML = info;
             btn.disabled = false;
-            btn.innerText = `Generate Round ${ps.nextRound}`;
+            
+            if (isPreTourney && ps.nextRound === 1) {
+                btn.innerText = "Generate Pre-Tournament Pairings";
+            } else {
+                btn.innerText = `Generate Round ${ps.nextRound}`;
+            }
         }
         
         const bucketUI = document.getElementById('swissOptions');
@@ -490,6 +563,23 @@
         } else {
             bucketUI.style.display = 'none';
         }
+    }
+
+    function actionBeginTournament() {
+        let missingCount = DATA.players.filter(p => !p.isCheckedIn).length;
+        if (missingCount > 0) {
+            if (!confirm(`${missingCount} players have not checked in.\n\nBeginning the tournament will automatically remove them and condense the pairings for Round 1.\n\nAre you sure you want to begin?`)) {
+                return;
+            }
+        } else {
+            if (!confirm("All players are checked in! Begin tournament?")) return;
+        }
+
+        showBusy("Beginning Tournament...");
+        google.script.run.withSuccessHandler(res => {
+            alert(res.message);
+            refreshAndRender();
+        }).beginTournamentRepair();
     }
 
     function populateBucketDropdown() {
@@ -638,7 +728,7 @@
         }).generateNextRound(buckets, addSubs);
     }
 
-    function actionSaveSettings() {
+function actionSaveSettings() {
         showBusy("Saving...");
         const d = { 
             uma1: document.getElementById('setUma1').value, 
@@ -649,7 +739,8 @@
             topCutEnabled: document.getElementById('setTopCutEnabled').checked.toString(),
             topCutSize: document.getElementById('setTopCutSize').value,
             topCutRound: document.getElementById('setTopCutRound').value,
-            tiebreakerRule: document.getElementById('setTiebreaker').value 
+            tiebreakerRule: document.getElementById('setTiebreaker').value,
+            preTourneyEnabled: document.getElementById('setPreTourneyEnabled').checked.toString()
         };
         google.script.run.withSuccessHandler(() => { alert("Saved"); refreshAndRender(); }).saveTournamentSettings(d);
     }

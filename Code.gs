@@ -221,7 +221,7 @@ function switchTournament(fileId) {
 }
 
 function startNewTournament(tournamentName, rulesetName) {
-  const master = SpreadsheetApp.getActiveSpreadsheet();
+  const master = getMasterSS();
   const cleanName = tournamentName || "New Tournament " + new Date().toLocaleDateString();
   const newSS = SpreadsheetApp.create(cleanName);
   const newId = newSS.getId();
@@ -232,12 +232,14 @@ function startNewTournament(tournamentName, rulesetName) {
   }
 
   try {
-    newSS.insertSheet("Players").appendRow(["Player ID", "Name"]);
+    // UPDATED to include Checked In column
+    newSS.insertSheet("Players").appendRow(["Player ID", "Name", "Checked In"]);
     newSS.insertSheet("Settings").appendRow(["Key", "Value"]);
     
-    // Penalty list generation
+    // --- PENALTY LIST GENERATION ---
     const pList = newSS.insertSheet("Penalties_List");
-    pList.appendRow(["Type", "Foul", "Penalty", "Point Deduction"]);
+    pList.appendRow(["Type", "Foul", "Penalty", "Point Deduction"]); 
+    
     const masterPList = master.getSheetByName("Penalties_List");
     if (masterPList) {
         const data = masterPList.getDataRange().getValues();
@@ -256,7 +258,9 @@ function startNewTournament(tournamentName, rulesetName) {
                     rowsToAdd.push([data[i][tIdx], data[i][fIdx], data[i][pIdx], ptVal]);
                 }
             }
-            if (rowsToAdd.length > 0) pList.getRange(2, 1, rowsToAdd.length, 4).setValues(rowsToAdd);
+            if (rowsToAdd.length > 0) {
+                pList.getRange(2, 1, rowsToAdd.length, 4).setValues(rowsToAdd);
+            }
         }
     } else {
         pList.appendRow(["Major", "Example Penalty", "Chombo", "-20"]);
@@ -264,7 +268,6 @@ function startNewTournament(tournamentName, rulesetName) {
 
     const sc = newSS.insertSheet("Scores");
     sc.appendRow(["Timestamp", "Round", "Game ID", "P1 ID", "Raw P1", "Formatted P1", "P2 ID", "Raw P2", "Formatted P2", "P3 ID", "Raw P3", "Formatted P3", "P4 ID", "Raw P4", "Formatted P4", "Leftover"]);
-    
     const pen = newSS.insertSheet("Penalties");
     pen.appendRow(["Timestamp", "Player ID", "Points Deducted", "Reason", "Round", "Table", "Notes"]);
     
@@ -282,7 +285,9 @@ function startNewTournament(tournamentName, rulesetName) {
     updateSheetSetting(newSS, "Uma 1st", 15);
     updateSheetSetting(newSS, "Uma 2nd", 5);
     updateSheetSetting(newSS, "Tiebreaker_Rule", "split");
-    
+    updateSheetSetting(newSS, "Pre_Tourney_Enabled", "false"); // NEW
+    updateSheetSetting(newSS, "Tourney_Begun", "false"); // NEW
+
     return "Success: Created '" + cleanName + "'";
   } catch (e) { throw new Error("Setup failed: " + e.message); }
 }
@@ -324,7 +329,9 @@ function getFullSettings() {
     topCutEnabled: read(dataSS, "Top_Cut_Enabled", "false"),
     topCutSize: read(dataSS, "Top_Cut_Size", 0),
     topCutRound: read(dataSS, "Top_Cut_Round", 0),
-    tiebreakerRule: read(dataSS, "Tiebreaker_Rule", "split")
+    tiebreakerRule: read(dataSS, "Tiebreaker_Rule", "split"),
+    preTourneyEnabled: read(dataSS, "Pre_Tourney_Enabled", "false"),
+    tourneyBegun: read(dataSS, "Tourney_Begun", "false")
   };
   return _cachedSettings;
 }
@@ -340,6 +347,7 @@ function saveTournamentSettings(form) {
   updateSheetSetting(ss, "Top_Cut_Size", form.topCutSize);
   updateSheetSetting(ss, "Top_Cut_Round", form.topCutRound);
   updateSheetSetting(ss, "Tiebreaker_Rule", form.tiebreakerRule);
+  updateSheetSetting(ss, "Pre_Tourney_Enabled", form.preTourneyEnabled);
   return "Settings Saved.";
 }
 
@@ -429,7 +437,11 @@ function getPlayers() {
   const sheet = ss.getSheetByName("Players");
   if (!sheet || sheet.getLastRow() <= 1) return [];
   const data = sheet.getDataRange().getValues();
-  return data.slice(1).map(r => ({ id: r[0], name: r[1] }));
+  return data.slice(1).map(r => ({ 
+      id: r[0], 
+      name: r[1],
+      isCheckedIn: r[2] === true || r[2] === "true" || r[2] === "TRUE"
+  }));
 }
 
 function clearAllPlayers() {
@@ -1136,4 +1148,155 @@ function getPlayerScheduleMatrix() {
       return na - nb;
   });
   return { maxRound: maxRound, players: list };
+}
+function togglePlayerCheckIn(playerId) {
+    const ss = getDataSS();
+    const sheet = ss.getSheetByName("Players");
+    if (!sheet) return getPlayers();
+    
+    const data = sheet.getDataRange().getValues();
+    if (data[0][2] !== "Checked In") {
+        sheet.getRange(1, 3).setValue("Checked In");
+    }
+    
+    for (let i = 1; i < data.length; i++) {
+        if (data[i][0].toString() == playerId.toString()) {
+            let cur = data[i][2] === true || data[i][2] === "true" || data[i][2] === "TRUE";
+            sheet.getRange(i + 1, 3).setValue(!cur);
+            break;
+        }
+    }
+    return getPlayers();
+}
+
+function beginTournamentRepair() {
+    const ss = getDataSS();
+    const pairSheet = ss.getSheetByName("Pairings");
+    const playersSheet = ss.getSheetByName("Players");
+    const players = getPlayers();
+    
+    const missingIds = players.filter(p => !p.isCheckedIn).map(p => String(p.id));
+    
+    // If everyone checked in, simply start the tournament
+    if (missingIds.length === 0) {
+        updateSheetSetting(ss, "Tourney_Begun", "true");
+        return { success: true, message: "Tournament begun successfully!" };
+    }
+
+    // --- Apply DNF to missing players so they don't get paired in Round 2 ---
+    const pData = playersSheet.getDataRange().getValues();
+    for (let i = 1; i < pData.length; i++) {
+        if (missingIds.includes(String(pData[i][0]))) {
+            let cur = pData[i][1].toString();
+            if (!cur.startsWith("[DNF] ")) {
+                playersSheet.getRange(i + 1, 2).setValue("[DNF] " + cur);
+            }
+        }
+    }
+    SpreadsheetApp.flush();
+
+    // --- Read Pairings for Round 1 ---
+    const pairData = pairSheet.getDataRange().getValues();
+    let round1StartIndex = -1;
+    let round1EndIndex = -1;
+    
+    for (let i = 0; i < pairData.length; i++) {
+        if (!pairData[i][0]) continue;
+        let cell = String(pairData[i][0]).toUpperCase();
+        if (cell.includes("ROUND 1")) {
+            round1StartIndex = i;
+        } else if (cell.includes("ROUND") && round1StartIndex !== -1) {
+            round1EndIndex = i;
+            break;
+        }
+    }
+    if (round1EndIndex === -1) round1EndIndex = pairData.length;
+
+    if (round1StartIndex === -1) {
+        updateSheetSetting(ss, "Tourney_Begun", "true");
+        return { success: true, message: "Started, but could not find Round 1 to repair." };
+    }
+
+    let tables = [];
+    for (let i = round1StartIndex + 1; i < round1EndIndex; i++) {
+        let row = pairData[i];
+        if (!isNaN(parseInt(row[0]))) {
+            tables.push({
+                tableId: row[0],
+                seats: [row[1], row[2], row[3], row[4]],
+                bucket: row[5] || ""
+            });
+        }
+    }
+
+    // --- Execute Repair Algorithm ---
+    // 1. Set missing players to null
+    tables.forEach(t => {
+        for (let s = 0; s < 4; s++) {
+            if (missingIds.includes(String(t.seats[s]))) {
+                t.seats[s] = null;
+            }
+        }
+    });
+
+    // 2. Condense from the back (Highest numbered table's players fill in the empty lower table holes)
+    for (let i = 0; i < tables.length; i++) {
+        for (let j = 0; j < 4; j++) {
+            if (tables[i].seats[j] === null) {
+                let found = false;
+                for (let k = tables.length - 1; k >= i; k--) {
+                    for (let s = 3; s >= 0; s--) {
+                        if (k === i && s <= j) continue;
+                        if (tables[k].seats[s] !== null) {
+                            tables[i].seats[j] = tables[k].seats[s];
+                            tables[k].seats[s] = null;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found) break;
+                }
+            }
+        }
+    }
+
+    // 3. Filter completely empty tables
+    tables = tables.filter(t => t.seats.some(seat => seat !== null));
+
+    // 4. Fill last table with newly created SUB players if it is missing people
+    if (tables.length > 0) {
+        let lastTable = tables[tables.length - 1];
+        let currentSubs = players.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
+        
+        let needsSub = lastTable.seats.some(seat => seat === null);
+        if (needsSub) {
+            for (let j = 0; j < 4; j++) {
+                if (lastTable.seats[j] === null) {
+                    currentSubs++;
+                    let subId = "P" + getNextSafeId(playersSheet);
+                    let subName = "SUB " + currentSubs;
+                    playersSheet.appendRow([subId, subName, true]); // Give sub an ID and automatically Check In
+                    lastTable.seats[j] = subId;
+                }
+            }
+            SpreadsheetApp.flush();
+        }
+    }
+
+    // 5. Re-write the Pairings sheet
+    pairSheet.getRange(round1StartIndex + 2, 1, round1EndIndex - (round1StartIndex + 2), 6).clearContent();
+    
+    let output = [];
+    let tCounter = 1;
+    tables.forEach(t => {
+        output.push([tCounter++, t.seats[0], t.seats[1], t.seats[2], t.seats[3], t.bucket]);
+    });
+    output.push(["", "", "", "", "", ""]);
+
+    if (output.length > 0) {
+        pairSheet.getRange(round1StartIndex + 2, 1, output.length, 6).setValues(output);
+    }
+
+    updateSheetSetting(ss, "Tourney_Begun", "true");
+    return { success: true, message: "Tournament begun and Round 1 pairings repaired!" };
 }
