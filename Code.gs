@@ -114,14 +114,22 @@ function getPenaltyDefinitions() {
   let foulIdx = headers.indexOf("foul");
   let penIdx = headers.indexOf("penalty");
   let ptIdx = headers.indexOf("point deduction");
+  let ruleIdx = headers.indexOf("ruleset");
 
   if (typeIdx === -1) typeIdx = 0;
   if (foulIdx === -1) foulIdx = 1;
   if (penIdx === -1) penIdx = 2;
   if (ptIdx === -1) ptIdx = 3;
 
+  let activeRuleset = readSetting(ss, "Active_Ruleset", "");
+
   let defs = [];
   for(let i=1; i<data.length; i++) {
+    // Automatically filter out duplicate fouls if we are operating on the Master Sheet
+    if (ruleIdx > -1 && activeRuleset) {
+        if (String(data[i][ruleIdx]) !== String(activeRuleset)) continue;
+    }
+
     if(data[i][typeIdx]) {
         defs.push({
           type: data[i][typeIdx],
@@ -133,7 +141,6 @@ function getPenaltyDefinitions() {
   }
   return defs;
 }
-
 function getAllGamesData() {
   try {
     const ss = getDataSS();
@@ -232,11 +239,9 @@ function startNewTournament(tournamentName, rulesetName) {
   }
 
   try {
-    // UPDATED to include Checked In column
     newSS.insertSheet("Players").appendRow(["Player ID", "Name", "Checked In"]);
     newSS.insertSheet("Settings").appendRow(["Key", "Value"]);
     
-    // --- PENALTY LIST GENERATION ---
     const pList = newSS.insertSheet("Penalties_List");
     pList.appendRow(["Type", "Foul", "Penalty", "Point Deduction"]);
     const masterPList = master.getSheetByName("Penalties_List");
@@ -286,6 +291,7 @@ function startNewTournament(tournamentName, rulesetName) {
     updateSheetSetting(newSS, "Tiebreaker_Rule", "split");
     updateSheetSetting(newSS, "Pre_Tourney_Enabled", "false"); 
     updateSheetSetting(newSS, "Tourney_Begun", "false"); 
+    updateSheetSetting(newSS, "Active_Ruleset", rulesetName); 
 
     return "Success: Created '" + cleanName + "'";
   } catch (e) { throw new Error("Setup failed: " + e.message); }
@@ -330,7 +336,8 @@ function getFullSettings() {
     topCutRound: read(dataSS, "Top_Cut_Round", 0),
     tiebreakerRule: read(dataSS, "Tiebreaker_Rule", "split"),
     preTourneyEnabled: read(dataSS, "Pre_Tourney_Enabled", "false"),
-    tourneyBegun: read(dataSS, "Tourney_Begun", "false")
+    tourneyBegun: read(dataSS, "Tourney_Begun", "false"),
+    activeRuleset: read(dataSS, "Active_Ruleset", "")
   };
   return _cachedSettings;
 }
@@ -347,6 +354,40 @@ function saveTournamentSettings(form) {
   updateSheetSetting(ss, "Top_Cut_Round", form.topCutRound);
   updateSheetSetting(ss, "Tiebreaker_Rule", form.tiebreakerRule);
   updateSheetSetting(ss, "Pre_Tourney_Enabled", form.preTourneyEnabled);
+
+  if (form.rulesetName) {
+      updateSheetSetting(ss, "Active_Ruleset", form.rulesetName);
+      const master = SpreadsheetApp.getActiveSpreadsheet();
+      
+      // If we are in a sub-tournament, overwrite the local Penalties_List with the newly chosen ruleset
+      if (ss.getId() !== master.getId()) {
+          const masterPList = master.getSheetByName("Penalties_List");
+          let localPList = ss.getSheetByName("Penalties_List");
+          if (masterPList && localPList) {
+              const data = masterPList.getDataRange().getValues();
+              const h = data[0].map(x => String(x).toLowerCase());
+              const rIdx = h.indexOf("ruleset");
+              const tIdx = h.indexOf("type");
+              const fIdx = h.indexOf("foul");
+              const pIdx = h.indexOf("penalty");
+              const ptIdx = h.indexOf("point deduction");
+
+              if (rIdx > -1 && tIdx > -1 && fIdx > -1 && pIdx > -1) {
+                  let rowsToAdd = [["Type", "Foul", "Penalty", "Point Deduction"]];
+                  for (let i = 1; i < data.length; i++) {
+                      if (String(data[i][rIdx]) === String(form.rulesetName)) {
+                          let ptVal = (ptIdx > -1) ? data[i][ptIdx] : "0";
+                          rowsToAdd.push([data[i][tIdx], data[i][fIdx], data[i][pIdx], ptVal]);
+                      }
+                  }
+                  if (rowsToAdd.length > 1) { 
+                      localPList.clear();
+                      localPList.getRange(1, 1, rowsToAdd.length, 4).setValues(rowsToAdd);
+                  }
+              }
+          }
+      }
+  }
   return "Settings Saved.";
 }
 

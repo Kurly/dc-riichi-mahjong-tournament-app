@@ -386,10 +386,15 @@ function renderSettings() {
         document.getElementById('topCutFields').style.display = chk.checked ? 'block' : 'none';
     }
 
-    function renderRulesetOptions() {
+function renderRulesetOptions() {
         const sel = document.getElementById('newRuleset');
         if (!sel || !DATA.rulesets) return;
         sel.innerHTML = DATA.rulesets.map(r => `<option value="${r}">${r}</option>`).join('');
+        
+        // Auto-select the currently active ruleset when the page loads
+        if (DATA.settings.activeRuleset) {
+            sel.value = DATA.settings.activeRuleset;
+        }
     }
 
     function renderRoster() {
@@ -744,7 +749,8 @@ function actionSaveSettings() {
             topCutSize: document.getElementById('setTopCutSize').value,
             topCutRound: document.getElementById('setTopCutRound').value,
             tiebreakerRule: document.getElementById('setTiebreaker').value,
-            preTourneyEnabled: document.getElementById('setPreTourneyEnabled').checked.toString()
+            preTourneyEnabled: document.getElementById('setPreTourneyEnabled').checked.toString(),
+            rulesetName: document.getElementById('newRuleset').value // Now pulls from the dropdown!
         };
         google.script.run.withSuccessHandler(() => { alert("Saved"); refreshAndRender(); }).saveTournamentSettings(d);
     }
