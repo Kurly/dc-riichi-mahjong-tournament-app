@@ -70,18 +70,17 @@
       box-shadow: 2px 0 5px rgba(0,0,0,0.05); 
     }
     
-    /* === COLUMN WIDTHS === */
-    .col-rank { left: 0; width: 45px; min-width: 45px; max-width: 45px; text-align: center; padding: 0 5px; }
-    .col-name { left: 45px; text-align: left; border-right: 2px solid #2c3e50; }
+/* === COLUMN WIDTHS === */
+    .col-rank { left: 0; width: 45px; min-width: 45px; max-width: 45px; text-align: center; padding: 0 5px;  }
+    .col-id { left: 45px; width: 45px; min-width: 45px; max-width: 55px; text-align: center; padding: 0 5px;  }
+    .col-name { left: 100px; text-align: left; border-right: 2px solid #2c3e50; min-width: 120px; }
     
-    .sch-name { left: 0; text-align: left; border-right: 2px solid #2c3e50; min-width: 140px; }
+    .sch-id { left: 0; width: 55px; min-width: 55px; max-width: 55px; text-align: center; padding: 0 5px;  }
+    .sch-name { left: 55px; text-align: left; border-right: 2px solid #2c3e50; min-width: 120px; }
 
     /* CELL STYLES */
     td.col-rank { font-weight: bold; color: #999; }
     td.col-name, td.sch-name { color: #2c3e50; border-right: 2px solid #ddd; }
-    
-    /* ID Tag inside Name Cell */
-    .inline-id { font-family: monospace; font-weight: bold; color: #95a5a6; margin-right: 5px; font-size: 0.9em; }
 
     /* SCORES */
     .pos { color: #27ae60; font-weight: bold; } 
@@ -253,7 +252,7 @@
       
       let html = "";
 
-      const buildRow = (p, isTopTable) => {
+const buildRow = (p, isTopTable) => {
           const cleanId = p.id.replace(/^P/i, '');
           const scoreVal = p.totalScore;
           const scoreClass = scoreVal >= 0 ? 'pos' : 'neg';
@@ -276,9 +275,8 @@
 
           let tr = `<tr class="${rowClass}">
                     <td class="sticky-col col-rank">${p.rank}</td>
-                    <td class="sticky-col col-name">
-                        <span class="inline-id">[${cleanId}]</span> ${p.name}
-                    </td>
+                    <td class="sticky-col col-id">${cleanId}</td>
+                    <td class="sticky-col col-name">${p.name}</td>
                     <td class="total-cell">${scoreDisplay}</td>`;
           
           const schedP = globalSchedule.players.find(sp => sp.id === p.id);
@@ -298,6 +296,7 @@
       const buildHeader = () => {
           let h = `<thead><tr>
             <th class="sticky-col col-rank">Rank</th>
+            <th class="sticky-col col-id">ID</th>
             <th class="sticky-col col-name">Name</th>
             <th style="min-width:70px;">Total</th>`;
           for(let i=maxR; i>=1; i--) h += `<th>R${i}</th>`;
@@ -323,20 +322,19 @@
       container.innerHTML = html;
     }
 
-    function renderSchedulePlayerView() {
+function renderSchedulePlayerView() {
       const container = document.getElementById('scheduleMatrix');
       if(!globalSchedule.players || !globalSchedule.players.length) { container.innerHTML = "<div class='card-pad'>No pairings.</div>"; return; }
       
-      let html = "<table><thead><tr><th class='sticky-col sch-name'>Name</th>";
+      let html = "<table><thead><tr><th class='sticky-col sch-id'>ID</th><th class='sticky-col sch-name'>Name</th>";
       for(let i=globalSchedule.maxRound; i>=1; i--) html += `<th>R${i}</th>`;
       html += "</tr></thead><tbody>";
       
       globalSchedule.players.forEach(p => {
         let cleanId = p.id.replace(/^P/i, '');
         html += `<tr class="searchable-row">
-            <td class="sticky-col sch-name">
-                <span class="inline-id">[${cleanId}]</span> ${p.name}
-            </td>`;
+            <td class="sticky-col sch-id">${cleanId}</td>
+            <td class="sticky-col sch-name">${p.name}</td>`;
         for(let i=globalSchedule.maxRound; i>=1; i--) {
           html += `<td>${p.tables[i] ? `<span class="t-badge">${p.tables[i]}</span>` : '-'}</td>`;
         }
@@ -391,14 +389,18 @@
         container.innerHTML = html;
     }
 
-    function filter() {
+function filter() {
       const q = document.getElementById('search').value.toLowerCase();
       
       const rows = document.querySelectorAll('.searchable-row');
       rows.forEach(row => {
           const name = row.querySelector('.col-name, .sch-name');
+          const idCell = row.querySelector('.col-id, .sch-id');
           let textMatch = false;
+          
           if (name && name.innerText.toLowerCase().includes(q)) textMatch = true;
+          if (idCell && idCell.innerText.toLowerCase().includes(q)) textMatch = true;
+          
           row.style.display = textMatch ? 'table-row' : 'none';
       });
 
