@@ -126,11 +126,13 @@
     <div class="loader-text" id="loaderText">Loading Data...</div>
   </div>
 
-  <div class="nav">
+<div class="nav">
     <div id="tourneyLabel" class="tourney-label">Loading...</div>
     <h2 id="pageTitle" style="margin:0;">Standings</h2>
-    <button class="btn" onclick="toggleView()" id="btnToggle">View Pairings</button>
-    <br>
+    <div style="margin-top: 10px;">
+        <button class="btn" onclick="toggleView()" id="btnToggle" style="margin-top:0;">View Pairings</button>
+        <button class="btn" onclick="actionRefresh()" style="margin-top:0; margin-left: 5px; background: #27ae60;">↻ Refresh</button>
+    </div>
     <input type="text" class="search" id="search" placeholder="Search name or ID..." onkeyup="filter()">
   </div>
 
@@ -172,7 +174,12 @@
     function getSchedP() { return new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler(rej).getPlayerScheduleMatrix()); }
     function getStandingsP() { return new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler(rej).getStandingsData()); }
 
-    window.onload = async () => {
+async function loadData(isRefresh = false) {
+      const loader = document.getElementById('loader');
+      const loaderText = document.getElementById('loaderText');
+      loaderText.innerText = isRefresh ? "Refreshing Data..." : "Loading Data...";
+      loader.style.display = 'flex';
+
       try {
         const [settings, sched, standings] = await Promise.all([ getSettingsP(), getSchedP(), getStandingsP() ]);
 
@@ -183,20 +190,30 @@
 
         globalSchedule = sched;
         globalStandings = standings;
-        selectedRound = globalSchedule.maxRound || 1;
+        
+        if (!isRefresh || selectedRound > (globalSchedule.maxRound || 1)) {
+            selectedRound = globalSchedule.maxRound || 1;
+        }
         
         renderRoundNav();
         renderStandings();
         renderSchedulePlayerView();
         renderScheduleTableView();
+        filter(); 
         
-        document.getElementById('loader').style.display = 'none';
+        loader.style.display = 'none';
 
       } catch (err) {
-        document.getElementById('loaderText').innerText = "Error: " + err.message;
+        loaderText.innerText = "Error: " + err.message;
         console.error(err);
       }
-    };
+    }
+
+    window.onload = () => loadData(false);
+
+    function actionRefresh() {
+        loadData(true);
+    }
 
     function toggleView() {
       if(mode === 'standings') {
