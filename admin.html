@@ -437,6 +437,7 @@ function renderRoster() {
                         <button style="background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s; margin:0;" onclick="actionRenamePlayer('${p.id}', '${cleanName}')">Rename</button>
                         <button class="btn-icon-orange" style="margin:0;" onclick="actionToggleDNF('${p.id}')">DNF</button>
                         <button class="btn-icon-red" style="margin:0;" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button>
+                        <button style="background: #eee; color: #555; border: 1px solid #ddd; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 0.9em; margin:0;" onclick="togglePlayerActions('${p.id}')">✕</button>
                     </div>
                 </td>
             </tr>`;
@@ -446,8 +447,16 @@ function renderRoster() {
         if (typeof filterRoster === 'function') filterRoster();
     }
 function togglePlayerActions(id) {
-        document.getElementById(`actions-btn-${id}`).style.display = 'none';
-        document.getElementById(`actions-menu-${id}`).style.display = 'flex';
+        const btnDiv = document.getElementById(`actions-btn-${id}`);
+        const menuDiv = document.getElementById(`actions-menu-${id}`);
+        
+        if (menuDiv.style.display === 'none' || menuDiv.style.display === '') {
+            btnDiv.style.display = 'none';
+            menuDiv.style.display = 'flex';
+        } else {
+            btnDiv.style.display = 'block';
+            menuDiv.style.display = 'none';
+        }
     }
 let currentCheckInFilter = 0; // 0=All, 1=Checked, 2=Missing
     
