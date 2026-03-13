@@ -26,10 +26,30 @@ function getScriptUrl() { return ScriptApp.getService().getUrl(); }
    2. DATA AGGREGATION & CACHING
    ================================================== */
 
-// Cache objects to prevent multiple calls to the spreadsheet in a single execution
+
+// Global memory cache to prevent redundant reads
 let _cachedDataSS = null;
 let _settingsMap = null;
 let _cachedSettings = null;
+let _sheetDataCache = {};
+
+function clearCache() {
+  _sheetDataCache = {};
+  _cachedSettings = null;
+  _settingsMap = null;
+}
+
+function getCachedSheetData(sheetName) {
+  if (_sheetDataCache[sheetName] !== undefined) return _sheetDataCache[sheetName];
+  const ss = getDataSS();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) { 
+      _sheetDataCache[sheetName] = null; 
+      return null; 
+  }
+  _sheetDataCache[sheetName] = sheet.getDataRange().getValues();
+  return _sheetDataCache[sheetName];
+}
 
 function getDataSS() {
   if (_cachedDataSS) return _cachedDataSS;
@@ -101,10 +121,8 @@ function getUniqueRulesets() {
 
 function getPenaltyDefinitions() {
   const ss = getDataSS();
-  const sheet = ss.getSheetByName("Penalties_List");
-  if (!sheet) return [];
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 2) return [];
+  const data = getCachedSheetData("Penalties_List");
+  if (!data || data.length < 2) return [];
   
   const headers = data[0].map(h => String(h).toLowerCase());
   let typeIdx = headers.indexOf("type");
@@ -122,17 +140,12 @@ function getPenaltyDefinitions() {
 
   let defs = [];
   for(let i=1; i<data.length; i++) {
-    // Automatically filter out duplicate fouls if we are operating on the Master Sheet
     if (ruleIdx > -1 && activeRuleset) {
         if (String(data[i][ruleIdx]) !== String(activeRuleset)) continue;
     }
-
     if(data[i][typeIdx]) {
         defs.push({
-          type: data[i][typeIdx],
-          foul: data[i][foulIdx],
-          penalty: data[i][penIdx],
-          pointDeduction: data[i][ptIdx]
+          type: data[i][typeIdx], foul: data[i][foulIdx], penalty: data[i][penIdx], pointDeduction: data[i][ptIdx]
         });
     }
   }
@@ -140,28 +153,25 @@ function getPenaltyDefinitions() {
 }
 function getAllGamesData() {
   try {
-    const ss = getDataSS();
-    const pairSheet = ss.getSheetByName("Pairings");
-    const scoreSheet = ss.getSheetByName("Scores"); 
-    if(!pairSheet) return {};
+    const pairData = getCachedSheetData("Pairings");
+    const scoreData = getCachedSheetData("Scores"); 
+    if(!pairData) return {};
     
     let scoredMap = {};
-    if (scoreSheet && scoreSheet.getLastRow() > 1) {
-        const sData = scoreSheet.getDataRange().getValues();
-        for (let i = 1; i < sData.length; i++) {
-            let r = String(sData[i][1]);
-            let t = String(sData[i][2]);
+    if (scoreData && scoreData.length > 1) {
+        for (let i = 1; i < scoreData.length; i++) {
+            let r = String(scoreData[i][1]);
+            let t = String(scoreData[i][2]);
             if (!scoredMap[r]) scoredMap[r] = new Set();
             scoredMap[r].add(t);
         }
     }
 
-    const data = pairSheet.getDataRange().getValues();
     const pMap = getPlayerMap();
     let gamesByRound = {};
     let currentRound = 0;
 
-    for(let row of data) {
+    for(let row of pairData) {
       if(!row[0]) continue; 
       let cell = row[0].toString().toUpperCase();
       if(cell.includes("ROUND")) {
@@ -169,7 +179,6 @@ function getAllGamesData() {
         currentRound = match ? parseInt(match[0]) : 0;
         continue;
       }
-      
       if(currentRound > 0) {
         let tableId = parseInt(row[0]);
         if (!isNaN(tableId)) {
@@ -188,10 +197,7 @@ function getAllGamesData() {
       }
     }
     return gamesByRound;
-  } catch (e) {
-    console.error(e);
-    return {};
-  }
+  } catch (e) { return {}; }
 }
 
 /* ==================================================
@@ -424,37 +430,25 @@ function getNextSafeId(sheet) {
 function addPlayer(name, manualId, araId) {
   const ss = getDataSS();
   let sheet = ss.getSheetByName("Players");
-  if (!sheet) { 
-      sheet = ss.insertSheet("Players"); 
-      sheet.appendRow(["Player ID", "Name", "Checked In", "ARA ID"]); 
-  }
-  
-  if (sheet.getRange(1, 4).getValue() !== "ARA ID") {
-      sheet.getRange(1, 4).setValue("ARA ID");
-  }
+  if (!sheet) { sheet = ss.insertSheet("Players"); sheet.appendRow(["Player ID", "Name", "Checked In", "ARA ID"]); }
+  if (sheet.getRange(1, 4).getValue() !== "ARA ID") sheet.getRange(1, 4).setValue("ARA ID");
 
   let id = manualId || "P" + getNextSafeId(sheet);
   sheet.appendRow([id, name, "", araId || ""]);
+  clearCache(); 
   return getPlayers();
 }
 
 function addPlayersBulk(names) {
   const ss = getDataSS();
   let sheet = ss.getSheetByName("Players");
-  if (!sheet) { 
-      sheet = ss.insertSheet("Players"); 
-      sheet.appendRow(["Player ID", "Name", "Checked In", "ARA ID"]); 
-  }
-  
-  if (sheet.getRange(1, 4).getValue() !== "ARA ID") {
-      sheet.getRange(1, 4).setValue("ARA ID");
-  }
+  if (!sheet) { sheet = ss.insertSheet("Players"); sheet.appendRow(["Player ID", "Name", "Checked In", "ARA ID"]); }
+  if (sheet.getRange(1, 4).getValue() !== "ARA ID") sheet.getRange(1, 4).setValue("ARA ID");
 
   let nextNum = getNextSafeId(sheet);
   const rows = [];
   names.forEach(line => { 
       if(line.trim()) { 
-          // Splits safely by dash, assuming "Name - ARA ID" format
           let parts = line.split(' - ');
           let n = parts[0].trim();
           let ara = parts.length > 1 ? parts.slice(1).join(' - ').trim() : "";
@@ -462,10 +456,8 @@ function addPlayersBulk(names) {
           nextNum++; 
       } 
   });
-  
-  if (rows.length > 0) {
-      sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 4).setValues(rows);
-  }
+  if (rows.length > 0) sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 4).setValues(rows);
+  clearCache();
   return getPlayers();
 }
 
@@ -473,10 +465,7 @@ function updateAraId(playerId, newAraId) {
     const ss = getDataSS();
     const sheet = ss.getSheetByName("Players");
     if (!sheet) return getPlayers();
-    
-    if (sheet.getRange(1, 4).getValue() !== "ARA ID") {
-        sheet.getRange(1, 4).setValue("ARA ID");
-    }
+    if (sheet.getRange(1, 4).getValue() !== "ARA ID") sheet.getRange(1, 4).setValue("ARA ID");
 
     const data = sheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
@@ -485,19 +474,18 @@ function updateAraId(playerId, newAraId) {
             break;
         }
     }
+    clearCache();
     return getPlayers();
 }
-
 function deletePlayer(playerId) {
   const ss = getDataSS();
   const sheet = ss.getSheetByName("Players");
   if (!sheet) return getPlayers();
   const data = sheet.getDataRange().getValues();
   for (let i = data.length - 1; i >= 1; i--) {
-    if (data[i][0].toString() == playerId.toString()) { 
-        sheet.deleteRow(i + 1);
-    }
+    if (data[i][0].toString() == playerId.toString()) sheet.deleteRow(i + 1);
   }
+  clearCache();
   return getPlayers();
 }
 
@@ -514,23 +502,25 @@ function togglePlayerDNF(playerId) {
       break;
     }
   }
+  clearCache();
   return getPlayers();
 }
 
 function getPlayers() {
-  const ss = getDataSS();
-  const sheet = ss.getSheetByName("Players");
-  if (!sheet || sheet.getLastRow() <= 1) return [];
+  let data = getCachedSheetData("Players");
+  if (!data) return [];
   
-  // Safely insert the new header on old spreadsheets if it doesn't exist
-  if (sheet.getRange(1, 4).getValue() !== "ARA ID") {
-      sheet.getRange(1, 4).setValue("ARA ID");
+  if (data.length > 0 && data[0][3] !== "ARA ID") {
+      const ss = getDataSS();
+      const sheet = ss.getSheetByName("Players");
+      if (sheet) sheet.getRange(1, 4).setValue("ARA ID");
+      clearCache(); // Data structurally changed, wipe cache
+      data = getCachedSheetData("Players");
   }
-
-  const data = sheet.getDataRange().getValues();
+  
+  if (data.length <= 1) return [];
   return data.slice(1).map(r => ({ 
-      id: r[0], 
-      name: r[1],
+      id: r[0], name: r[1],
       isCheckedIn: r[2] === true || r[2] === "true" || r[2] === "TRUE",
       araId: r[3] || ""
   }));
@@ -542,6 +532,7 @@ function clearAllPlayers() {
   if (sheet && sheet.getLastRow() > 1) {
     sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clearContent();
   }
+  clearCache();
   return [];
 }
 
@@ -555,23 +546,19 @@ function renamePlayer(playerId, newName) {
   const ss = getDataSS();
   const sheet = ss.getSheetByName("Players");
   if (!sheet) return;
-  
   const cleanName = newName.trim();
   if (!cleanName) return;
-  
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (data[i][0].toString() === playerId.toString()) {
       let cur = data[i][1].toString();
       let isDNF = cur.startsWith("[DNF] ");
       let finalName = isDNF ? "[DNF] " + cleanName : cleanName;
-      
       sheet.getRange(i + 1, 2).setValue(finalName);
       break;
     }
   }
-  
-  SpreadsheetApp.flush();
+  clearCache();
   updateLeaderboardSheet();
 }
 /* ==================================================
@@ -579,15 +566,13 @@ function renamePlayer(playerId, newName) {
    ================================================== */
 
 function getPairingState() {
-  const ss = getDataSS();
-  const pairSheet = ss.getSheetByName("Pairings");
+  const data = getCachedSheetData("Pairings");
   const sett = getFullSettings();
   const players = getPlayers();
   if (players.length < 4) return { error: "Need at least 4 players." };
 
   let maxRound = 0;
-  if (pairSheet && pairSheet.getLastRow() > 1) {
-    const data = pairSheet.getDataRange().getValues();
+  if (data && data.length > 1) {
     for(let row of data) {
       if(!row[0]) continue;
       let cell = row[0].toString().toUpperCase();
@@ -606,21 +591,14 @@ function getPairingState() {
     if (baseSize < 4 && b > 1) break; 
     let lastBucketSize = pCount - (baseSize * (b - 1));
     if (lastBucketSize >= 4 && lastBucketSize % 4 === 0) {
-        let label = (b === 1) ?
-                    `1 Bucket (${pCount})` : 
-                    (baseSize === lastBucketSize) ?
-                    `${b} Buckets (${baseSize} each)` : 
-                    `${b} Buckets (${b-1}x${baseSize}, 1x${lastBucketSize})`;
+        let label = (b === 1) ? `1 Bucket (${pCount})` : (baseSize === lastBucketSize) ? `${b} Buckets (${baseSize} each)` : `${b} Buckets (${b-1}x${baseSize}, 1x${lastBucketSize})`;
         validOptions.push({ val: b, label: label });
     }
   }
 
   return {
-    nextRound: maxRound + 1,
-    totalRounds: sett.roundCount,
-    playerCount: players.length,
-    validBuckets: validOptions,
-    lastBuckets: Number(readSetting(ss, "Last_Bucket_Count", 1))
+    nextRound: maxRound + 1, totalRounds: sett.roundCount, playerCount: players.length,
+    validBuckets: validOptions, lastBuckets: Number(readSetting(getDataSS(), "Last_Bucket_Count", 1))
   };
 }
 
@@ -842,14 +820,12 @@ function countRepeats(players, historyMap) {
 }
 
 function getScheduleTables() {
-  const ss = getDataSS();
-  const pairSheet = ss.getSheetByName("Pairings");
+  const data = getCachedSheetData("Pairings");
   const pMap = getPlayerMap();
-  if (!pairSheet) return [];
-  const data = pairSheet.getDataRange().getValues();
+  if (!data) return [];
+  
   let schedule = [];
   let currentRoundObj = null;
-
   for (let row of data) {
     if (!row[0]) continue;
     let cell = row[0].toString().toUpperCase();
@@ -862,10 +838,8 @@ function getScheduleTables() {
       continue;
     }
     if (currentRoundObj && !isNaN(parseInt(row[0]))) {
-      let tId = parseInt(row[0]);
-      let bucket = (row.length > 5 && row[5]) ? row[5] : "";
       let table = {
-        id: tId, bucket: bucket,
+        id: parseInt(row[0]), bucket: (row.length > 5 && row[5]) ? row[5] : "",
         p1: pMap[row[1]] || row[1], p2: pMap[row[2]] || row[2],
         p3: pMap[row[3]] || row[3], p4: pMap[row[4]] || row[4]
       };
@@ -898,6 +872,7 @@ function checkIfScored(round, gameId, p1Id, p2Id, p3Id, p4Id) {
 }
 
 function saveScores(form) {
+  // ... (Leave the top part of your logic untouched down to the actual write operation) ...
   const ss = getDataSS();
   let sheet = ss.getSheetByName("Scores");
   if (!sheet) sheet = ss.insertSheet("Scores");
@@ -914,8 +889,6 @@ function saveScores(form) {
   let pData = [ { id: g.p1Id, s: Number(g.p1Score), k: 'p1' }, { id: g.p2Id, s: Number(g.p2Score), k: 'p2' }, { id: g.p3Id, s: Number(g.p3Score), k: 'p3' }, { id: g.p4Id, s: Number(g.p4Score), k: 'p4' } ];
   const bonuses = [u1, u2, -u2, -u1];
   let res = {};
-  
-  // Clean grouping for Split Uma logic
   if (tieRule === 'head_bump' && form.rankedIds) {
       pData.sort((a, b) => {
          if (b.s !== a.s) return b.s - a.s; 
@@ -931,7 +904,6 @@ function saveScores(form) {
           group.players.push(p);
           group.totalBonus += bonuses[i];
       });
-      
       scoreGroups.forEach((group, score) => {
           let avgBonus = group.totalBonus / group.players.length;
           group.players.forEach(p => {
@@ -942,51 +914,41 @@ function saveScores(form) {
 
   const check = checkIfScored(form.round, g.gameId);
   const rowData = [ new Date(), form.round, g.gameId, g.p1Id, res.p1.raw, res.p1.final, g.p2Id, res.p2.raw, res.p2.final, g.p3Id, res.p3.raw, res.p3.final, g.p4Id, res.p4.raw, res.p4.final, g.leftoverScore ];
-  
   if (check.scored && check.rowIndex) { sheet.getRange(check.rowIndex, 1, 1, rowData.length).setValues([rowData]); }
   else { sheet.appendRow(rowData); }
   
-  SpreadsheetApp.flush(); 
+  clearCache(); // New: Invalidate so standings recalculate fresh
   updateLeaderboardSheet();
   return { success: true, message: check.scored ? "Updated existing score." : "Saved new score." };
 }
 
+
 function addPenalty(round, table, playerId, points, reason, notes) {
   const ss = getDataSS();
   let sheet = ss.getSheetByName("Penalties");
-  if (!sheet) { 
-      sheet = ss.insertSheet("Penalties");
-      sheet.appendRow(["Timestamp", "Player ID", "Points Deducted", "Reason", "Round", "Table", "Notes"]); 
-  }
+  if (!sheet) { sheet = ss.insertSheet("Penalties"); sheet.appendRow(["Timestamp", "Player ID", "Points Deducted", "Reason", "Round", "Table", "Notes"]); }
   
   let pts = Number(points);
   if (isNaN(pts)) pts = 0; 
   if (Math.abs(pts) < 1000 && pts !== 0) pts *= 1000;
-
   sheet.appendRow([new Date(), playerId, pts, reason, round, table, notes]);
+  
+  clearCache(); // New: Wipe memory before recalculating
   updateLeaderboardSheet();
   return { success: true, message: "Penalty Added." };
 }
 
 function getRecentPenalties() {
-  const ss = getDataSS();
-  const sheet = ss.getSheetByName("Penalties");
-  if (!sheet || sheet.getLastRow() <= 1) return [];
-  const data = sheet.getDataRange().getValues();
+  const data = getCachedSheetData("Penalties");
+  if (!data || data.length <= 1) return [];
   const pMap = getPlayerMap();
   return data.slice(1).reverse().map(r => {
     let dateStr = "N/A";
     try { if (r[0]) dateStr = Utilities.formatDate(new Date(r[0]), Session.getScriptTimeZone(), "MM/dd HH:mm"); } catch(e) { dateStr = r[0].toString(); }
     return { 
-        date: dateStr, 
-        rawDate: r[0] ? new Date(r[0]).getTime() : 0,
-        playerId: r[1],
-        name: pMap[r[1]] || r[1], 
-        points: r[2], 
-        reason: r[3], 
-        round: (r[4] || "-"), 
-        table: (r[5] || "-"),
-        notes: (r[6] || "") 
+        date: dateStr, rawDate: r[0] ? new Date(r[0]).getTime() : 0,
+        playerId: r[1], name: pMap[r[1]] || r[1], 
+        points: r[2], reason: r[3], round: (r[4] || "-"), table: (r[5] || "-"), notes: (r[6] || "") 
     };
   });
 }
@@ -995,30 +957,23 @@ function deletePenalty(rawDate, playerId) {
   const ss = getDataSS();
   const sheet = ss.getSheetByName("Penalties");
   if (!sheet) return { success: false, message: "Penalties sheet not found." };
-  
   const data = sheet.getDataRange().getValues();
-  
-  // Iterate backwards to safely delete the correct row 
   for (let i = data.length - 1; i >= 1; i--) {
     let rDate = data[i][0] ? new Date(data[i][0]).getTime() : 0;
     let rPid = data[i][1];
-    
-    // Match based on the exact timestamp and Player ID
     if (rDate === rawDate && String(rPid) === String(playerId)) {
       sheet.deleteRow(i + 1);
-      updateLeaderboardSheet(); // Recalculate standings immediately
+      clearCache(); // New: Wipe memory before recalculating
+      updateLeaderboardSheet();
       return { success: true, message: "Penalty deleted successfully." };
     }
   }
-  
   return { success: false, message: "Penalty record not found." };
 }
 
 function getScoreLog() {
-  const ss = getDataSS();
-  const sheet = ss.getSheetByName("Scores");
-  if (!sheet || sheet.getLastRow() <= 1) return [];
-  const data = sheet.getDataRange().getValues();
+  const data = getCachedSheetData("Scores");
+  if (!data || data.length <= 1) return [];
   const pMap = getPlayerMap();
   return data.slice(1).reverse().map(r => {
     let dateStr = "N/A";
@@ -1033,8 +988,8 @@ function getScoreLog() {
 
 function getStandingsData() {
   const ss = getDataSS();
-  const sSheet = ss.getSheetByName("Scores");
-  const pSheet = ss.getSheetByName("Penalties");
+  const sData = getCachedSheetData("Scores");
+  const pData = getCachedSheetData("Penalties");
   const pMap = getPlayerMap();
   
   let startRound = parseInt(readSetting(ss, "Top_Cut_Start_Round", "0"));
@@ -1046,21 +1001,18 @@ function getStandingsData() {
   let stats = {};
   Object.keys(pMap).forEach(id => { 
       stats[id] = { 
-          id: id, name: pMap[id], 
-          totalPts: 0, postCutPts: 0, preCutPts: 0,
-          played: 0, pen: 0, 
-          isDNF: pMap[id].startsWith("[DNF]"),
-          isTopCut: topSet.has(id)
+          id: id, name: pMap[id], totalPts: 0, postCutPts: 0, preCutPts: 0,
+          played: 0, pen: 0, isDNF: pMap[id].startsWith("[DNF]"), isTopCut: topSet.has(id)
       }; 
   });
-  if(sSheet && sSheet.getLastRow() > 1) {
-    const data = sSheet.getDataRange().getValues();
-    for(let i=1; i<data.length; i++) {
-      if (!data[i][1]) continue;
-      let rNum = parseInt(data[i][1]);
+
+  if(sData && sData.length > 1) {
+    for(let i=1; i<sData.length; i++) {
+      if (!sData[i][1]) continue;
+      let rNum = parseInt(sData[i][1]);
       [3, 6, 9, 12].forEach((idIdx) => {
-        const pid = data[i][idIdx]; 
-        const pts = Number(data[i][idIdx + 2]); 
+        const pid = sData[i][idIdx]; 
+        const pts = Number(sData[i][idIdx + 2]); 
         if(pid && stats[pid]) { 
             stats[pid].totalPts += pts;
             stats[pid].played++;
@@ -1070,8 +1022,7 @@ function getStandingsData() {
     }
   }
   
-  if(pSheet && pSheet.getLastRow() > 1) {
-    const pData = pSheet.getDataRange().getValues();
+  if(pData && pData.length > 1) {
     for(let i=1; i<pData.length; i++) {
       if (!pData[i][1]) continue;
       let rNum = parseInt(pData[i][4]);
@@ -1089,25 +1040,20 @@ function getStandingsData() {
       p.preCutPts = p.totalPts - p.postCutPts;
       p.sortScore = p.isTopCut ? p.postCutPts : p.totalPts; 
   });
-  
+
   let topGroup = Object.values(stats).filter(p => p.isTopCut).sort((a,b) => b.sortScore - a.sortScore);
   let restGroup = Object.values(stats).filter(p => !p.isTopCut).sort((a,b) => {
       if (a.isDNF !== b.isDNF) return a.isDNF ? 1 : -1;
       return b.sortScore - a.sortScore;
   });
-  
+
   const formatP = (p, rank) => ({
-      rank: p.isDNF ? "-" : rank,
-      id: p.id, name: p.name,
+      rank: p.isDNF ? "-" : rank, id: p.id, name: p.name,
       displayScore: p.totalPts, auxScore: p.postCutPts, totalScore: p.totalPts,
-      played: p.played, penalties: p.pen,
-      isDNF: p.isDNF, isTopCut: p.isTopCut
+      played: p.played, penalties: p.pen, isDNF: p.isDNF, isTopCut: p.isTopCut
   });
-  
-  return [
-      ...topGroup.map((p, i) => formatP(p, i+1)),
-      ...restGroup.map((p, i) => formatP(p, topGroup.length + i + 1))
-  ];
+
+  return [ ...topGroup.map((p, i) => formatP(p, i+1)), ...restGroup.map((p, i) => formatP(p, topGroup.length + i + 1)) ];
 }
 
 function updateLeaderboardSheet() {
@@ -1119,12 +1065,9 @@ function updateLeaderboardSheet() {
   const rows = standings.map(p => [ p.rank, p.id, p.name, p.played, p.displayScore ]);
   
   sheet.clear();
-  
-  // Combine header and data into a single array for one bulk write operation
   const output = [["Rank", "Player ID", "Name", "Games Played", "Total Points"], ...rows];
   sheet.getRange(1, 1, output.length, 5).setValues(output);
 }
-
 /* ==================================================
    8. SWAP & EDITING TOOLS
    ================================================== */
@@ -1270,12 +1213,8 @@ function togglePlayerCheckIn(playerId) {
     const ss = getDataSS();
     const sheet = ss.getSheetByName("Players");
     if (!sheet) return getPlayers();
-    
     const data = sheet.getDataRange().getValues();
-    if (data[0][2] !== "Checked In") {
-        sheet.getRange(1, 3).setValue("Checked In");
-    }
-    
+    if (data[0][2] !== "Checked In") sheet.getRange(1, 3).setValue("Checked In");
     for (let i = 1; i < data.length; i++) {
         if (data[i][0].toString() == playerId.toString()) {
             let cur = data[i][2] === true || data[i][2] === "true" || data[i][2] === "TRUE";
@@ -1283,6 +1222,7 @@ function togglePlayerCheckIn(playerId) {
             break;
         }
     }
+    clearCache();
     return getPlayers();
 }
 
