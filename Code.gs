@@ -499,7 +499,29 @@ function getPlayerMap() {
   list.forEach(p => map[p.id.toString()] = p.name);
   return map;
 }
-
+function renamePlayer(playerId, newName) {
+  const ss = getDataSS();
+  const sheet = ss.getSheetByName("Players");
+  if (!sheet) return;
+  
+  const cleanName = newName.trim();
+  if (!cleanName) return;
+  
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0].toString() === playerId.toString()) {
+      let cur = data[i][1].toString();
+      let isDNF = cur.startsWith("[DNF] ");
+      let finalName = isDNF ? "[DNF] " + cleanName : cleanName;
+      
+      sheet.getRange(i + 1, 2).setValue(finalName);
+      break;
+    }
+  }
+  
+  SpreadsheetApp.flush();
+  updateLeaderboardSheet();
+}
 /* ==================================================
    5. PAIRING LOGIC
    ================================================== */

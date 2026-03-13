@@ -159,7 +159,7 @@
       
       <div style="overflow-x:auto;">
         <table class="data-table">
-            <thead><tr><th style="width:80px;">Status</th><th>ID</th><th>Name</th><th style="width:100px; text-align:right;">Actions</th></tr></thead>
+            <thead><tr><th style="width:80px;">Status</th><th>ID</th><th>Name</th><th style="width:180px; text-align:right;">Actions</th></tr></thead>
             <tbody id="rosterBody"></tbody>
         </table>
       </div>
@@ -397,19 +397,30 @@ function renderRulesetOptions() {
         }
     }
 
-    function renderRoster() {
+function renderRoster() {
         const tbody = document.getElementById('rosterBody');
-        document.getElementById('rosterCount').textContent = `(${DATA.players.length})`;
-        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='3' style='text-align:center;'>No players</td></tr>";
+        const checkedCount = DATA.players.filter(p => p.isCheckedIn).length;
+        document.getElementById('rosterCount').textContent = `(${checkedCount}/${DATA.players.length} Checked In)`;
+        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='4' style='text-align:center;'>No players</td></tr>";
+        
         DATA.players.forEach(p => {
             const safe = p.name.replace(/'/g, "\\'");
-            tbody.innerHTML += `<tr><td style="color:#3498db; font-weight:bold;">${p.id}</td><td>${p.name}</td><td style="text-align:right;"><button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button><button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button></td></tr>`;
+            const cleanName = p.name.replace("[DNF] ", "").replace(/'/g, "\\'");
+            const checkClass = p.isCheckedIn ? "btn-green" : "btn-icon-orange";
+            const checkText = p.isCheckedIn ? "✓ IN" : "Check In";
+            tbody.innerHTML += `<tr>
+                <td style="width:80px;"><button class="btn ${checkClass}" style="width:100%; padding:5px; font-size:0.8em; margin:0;" onclick="actionToggleCheckIn('${p.id}')">${checkText}</button></td>
+                <td style="color:#3498db; font-weight:bold;">${p.id}</td>
+                <td>${p.name}</td>
+                <td style="text-align:right;">
+                    <button style="background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s; margin-right: 5px;" onclick="actionRenamePlayer('${p.id}', '${cleanName}')">Edit</button>
+                    <button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button>
+                    <button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button>
+                </td>
+            </tr>`;
         });
         
-        // Re-apply filter if a search is currently active
-        if (typeof filterRoster === 'function') {
-            filterRoster();
-        }
+        if (typeof filterRoster === 'function') filterRoster();
     }
 
 let currentCheckInFilter = 0; // 0=All, 1=Checked, 2=Missing
@@ -822,6 +833,15 @@ function actionSaveSettings() {
 
     function actionDeletePlayer(id, name) {
         if(confirm(`Remove ${name}?`)) { showBusy("Deleting..."); google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); hideBusy(); }).deletePlayer(id); }
+    }
+    function actionRenamePlayer(id, currentName) {
+        const newName = prompt(`Enter new name for player ${id}:`, currentName);
+        if (newName && newName.trim() !== "" && newName.trim() !== currentName) {
+            showBusy("Renaming...");
+            google.script.run.withSuccessHandler(() => {
+                refreshAndRender();
+            }).renamePlayer(id, newName.trim());
+        }
     }
     function actionToggleDNF(id) {
         showBusy("Updating..."); google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); hideBusy(); }).togglePlayerDNF(id);
