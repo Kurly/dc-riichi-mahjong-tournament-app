@@ -413,16 +413,24 @@ function renderRoster() {
                 <td style="color:#3498db; font-weight:bold;">${p.id}</td>
                 <td>${p.name}</td>
                 <td style="text-align:right;">
-                    <button style="background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s; margin-right: 5px;" onclick="actionRenamePlayer('${p.id}', '${cleanName}')">Edit</button>
-                    <button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button>
-                    <button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button>
+                    <div id="actions-btn-${p.id}">
+                        <button style="background: #f4f4f4; color: #555; border: 1px solid #ddd; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s;" onclick="togglePlayerActions('${p.id}')">Manage</button>
+                    </div>
+                    <div id="actions-menu-${p.id}" style="display:none; justify-content: flex-end; gap: 5px;">
+                        <button style="background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s; margin:0;" onclick="actionRenamePlayer('${p.id}', '${cleanName}')">Rename</button>
+                        <button class="btn-icon-orange" style="margin:0;" onclick="actionToggleDNF('${p.id}')">DNF</button>
+                        <button class="btn-icon-red" style="margin:0;" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button>
+                    </div>
                 </td>
             </tr>`;
         });
         
         if (typeof filterRoster === 'function') filterRoster();
     }
-
+function togglePlayerActions(id) {
+        document.getElementById(`actions-btn-${id}`).style.display = 'none';
+        document.getElementById(`actions-menu-${id}`).style.display = 'flex';
+    }
 let currentCheckInFilter = 0; // 0=All, 1=Checked, 2=Missing
     
     function cycleCheckInFilter() {
@@ -459,29 +467,6 @@ let currentCheckInFilter = 0; // 0=All, 1=Checked, 2=Missing
         }
     }
 
-    function renderRoster() {
-        const tbody = document.getElementById('rosterBody');
-        const checkedCount = DATA.players.filter(p => p.isCheckedIn).length;
-        document.getElementById('rosterCount').textContent = `(${checkedCount}/${DATA.players.length} Checked In)`;
-        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='4' style='text-align:center;'>No players</td></tr>";
-        
-        DATA.players.forEach(p => {
-            const safe = p.name.replace(/'/g, "\\'");
-            const checkClass = p.isCheckedIn ? "btn-green" : "btn-icon-orange";
-            const checkText = p.isCheckedIn ? "✓ IN" : "Check In";
-            tbody.innerHTML += `<tr>
-                <td style="width:80px;"><button class="btn ${checkClass}" style="width:100%; padding:5px; font-size:0.8em; margin:0;" onclick="actionToggleCheckIn('${p.id}')">${checkText}</button></td>
-                <td style="color:#3498db; font-weight:bold;">${p.id}</td>
-                <td>${p.name}</td>
-                <td style="text-align:right;">
-                    <button class="btn-icon-orange" onclick="actionToggleDNF('${p.id}')">DNF</button>
-                    <button class="btn-icon-red" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button>
-                </td>
-            </tr>`;
-        });
-        
-        if (typeof filterRoster === 'function') filterRoster();
-    }
 
     function actionToggleCheckIn(id) {
         showBusy("Updating...");
