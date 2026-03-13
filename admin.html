@@ -146,25 +146,28 @@
       <h2>Add Player</h2>
       <div style="display:flex; gap:10px;">
         <input type="text" id="addName" placeholder="Name" style="flex:2;">
-        <input type="text" id="addId" placeholder="ID (Optional)" style="flex:1;">
+        <input type="text" id="addAraId" placeholder="ARA ID (Optional)" style="flex:1;">
+        <input type="text" id="addId" placeholder="Local ID (Optional)" style="flex:1;">
       </div>
       <button class="btn btn-green" id="btnAddPlayer" onclick="actionAddPlayer()">Add Single</button>
     </div>
+    
     <div class="card" style="border-left: 5px solid #3498db;">
       <h2>Bulk Import</h2>
-      <textarea id="bulkText" rows="4" placeholder="Paste list of names here..."></textarea>
+      <textarea id="bulkText" rows="4" placeholder="Paste list... format: Name - ARA ID (or just Name)"></textarea>
       <button class="btn btn-blue" id="btnBulk" onclick="actionBulk()">Import List</button>
     </div>
-<div class="card">
+
+    <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
           <h2 style="margin:0;">Roster <span id="rosterCount" style="font-size:0.8em; color:#888;"></span></h2>
           <button id="btnFilterCheckIn" class="btn btn-blue" style="width:auto; margin:0; padding:8px 15px; font-size:0.9em;" onclick="cycleCheckInFilter()">Filter: All</button>
       </div>
-      <input type="text" id="searchRoster" placeholder="Search by name or ID..." onkeyup="filterRoster()" style="margin-bottom: 15px;">
+      <input type="text" id="searchRoster" placeholder="Search by name, ID, or ARA ID..." onkeyup="filterRoster()" style="margin-bottom: 15px;">
       
       <div style="overflow-x:auto;">
         <table class="data-table">
-            <thead><tr><th style="width:80px;">Status</th><th>ID</th><th>Name</th><th style="width:180px; text-align:right;">Actions</th></tr></thead>
+            <thead><tr><th style="width:80px;">Status</th><th>ID</th><th>Name</th><th>ARA ID</th><th style="width:190px; text-align:right;">Actions</th></tr></thead>
             <tbody id="rosterBody"></tbody>
         </table>
       </div>
@@ -406,22 +409,26 @@ function renderRoster() {
         const tbody = document.getElementById('rosterBody');
         const checkedCount = DATA.players.filter(p => p.isCheckedIn).length;
         document.getElementById('rosterCount').textContent = `(${checkedCount}/${DATA.players.length} Checked In)`;
-        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='4' style='text-align:center;'>No players</td></tr>";
+        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='5' style='text-align:center;'>No players</td></tr>";
         
         DATA.players.forEach(p => {
             const safe = p.name.replace(/'/g, "\\'");
             const cleanName = p.name.replace("[DNF] ", "").replace(/'/g, "\\'");
             const checkClass = p.isCheckedIn ? "btn-green" : "btn-icon-orange";
             const checkText = p.isCheckedIn ? "✓ IN" : "Check In";
+            const araDisplay = p.araId ? p.araId : "<span style='color:#ccc;'>-</span>";
+            
             tbody.innerHTML += `<tr>
                 <td style="width:80px;"><button class="btn ${checkClass}" style="width:100%; padding:5px; font-size:0.8em; margin:0;" onclick="actionToggleCheckIn('${p.id}')">${checkText}</button></td>
                 <td style="color:#3498db; font-weight:bold;">${p.id}</td>
                 <td>${p.name}</td>
+                <td style="color:#8e44ad; font-family:monospace; font-weight:bold;">${araDisplay}</td>
                 <td style="text-align:right;">
                     <div id="actions-btn-${p.id}">
                         <button style="background: #f4f4f4; color: #555; border: 1px solid #ddd; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s;" onclick="togglePlayerActions('${p.id}')">Manage</button>
                     </div>
                     <div id="actions-menu-${p.id}" style="display:none; justify-content: flex-end; gap: 5px;">
+                        <button style="background: #f3e5f5; color: #8e24aa; border: 1px solid #e1bee7; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s; margin:0;" onclick="actionEditAraId('${p.id}', '${p.araId || ''}')">ARA</button>
                         <button style="background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.9em; transition: 0.2s; margin:0;" onclick="actionRenamePlayer('${p.id}', '${cleanName}')">Rename</button>
                         <button class="btn-icon-orange" style="margin:0;" onclick="actionToggleDNF('${p.id}')">DNF</button>
                         <button class="btn-icon-red" style="margin:0;" onclick="actionDeletePlayer('${p.id}', '${safe}')">Del</button>
@@ -447,7 +454,7 @@ let currentCheckInFilter = 0; // 0=All, 1=Checked, 2=Missing
         filterRoster();
     }
 
-    function filterRoster() {
+function filterRoster() {
         const input = document.getElementById('searchRoster');
         const filterText = input ? input.value.toLowerCase() : "";
         const tbody = document.getElementById('rosterBody');
@@ -455,14 +462,18 @@ let currentCheckInFilter = 0; // 0=All, 1=Checked, 2=Missing
 
         for (let i = 0; i < trs.length; i++) {
             const tds = trs[i].getElementsByTagName('td');
-            if (tds.length > 2) {
+            if (tds.length > 3) {
                 const statusTd = tds[0];
                 const idText = tds[1].textContent || tds[1].innerText;
                 const nameText = tds[2].textContent || tds[2].innerText;
+                const araText = tds[3].textContent || tds[3].innerText;
                 
                 const isChecked = statusTd.querySelector('.btn-green') !== null;
                 
-                let textMatch = idText.toLowerCase().indexOf(filterText) > -1 || nameText.toLowerCase().indexOf(filterText) > -1;
+                let textMatch = idText.toLowerCase().indexOf(filterText) > -1 || 
+                                nameText.toLowerCase().indexOf(filterText) > -1 || 
+                                araText.toLowerCase().indexOf(filterText) > -1;
+                
                 let statusMatch = true;
                 if (currentCheckInFilter === 1 && !isChecked) statusMatch = false;
                 if (currentCheckInFilter === 2 && isChecked) statusMatch = false;
@@ -806,21 +817,43 @@ function actionSaveSettings() {
         }).addPenalty(round, (table || "-"), pid, pts, reason, notes);
     }
 
-    function actionAddPlayer() {
+function actionAddPlayer() {
         const n = document.getElementById('addName').value;
         const i = document.getElementById('addId').value;
+        const ara = document.getElementById('addAraId') ? document.getElementById('addAraId').value : "";
         if(!n) return;
         showBusy("Adding...");
-        google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); document.getElementById('addName').value=""; hideBusy(); }).addPlayer(n, i);
+        google.script.run.withSuccessHandler(d => { 
+            DATA.players = d; 
+            renderRoster(); 
+            document.getElementById('addName').value=""; 
+            if(document.getElementById('addAraId')) document.getElementById('addAraId').value="";
+            hideBusy(); 
+        }).addPlayer(n, i, ara);
     }
     
-    function actionBulk() {
+function actionBulk() {
         const txt = document.getElementById('bulkText').value;
         if(!txt.trim()) return;
         showBusy("Importing...");
-        google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); document.getElementById('bulkText').value=""; hideBusy(); }).addPlayersBulk(txt.split('\n'));
+        google.script.run.withSuccessHandler(d => { 
+            DATA.players = d; 
+            renderRoster(); 
+            document.getElementById('bulkText').value=""; 
+            hideBusy(); 
+        }).addPlayersBulk(txt.split('\n'));
     }
-
+    function actionEditAraId(id, currentAra) {
+        const newAra = prompt(`Enter ARA ID for player ${id}:`, currentAra);
+        if (newAra !== null && newAra.trim() !== currentAra) {
+            showBusy("Updating...");
+            google.script.run.withSuccessHandler(d => {
+                DATA.players = d;
+                renderRoster();
+                hideBusy();
+            }).updateAraId(id, newAra.trim());
+        }
+    }
     function actionDeletePlayer(id, name) {
         if(confirm(`Remove ${name}?`)) { showBusy("Deleting..."); google.script.run.withSuccessHandler(d => { DATA.players = d; renderRoster(); hideBusy(); }).deletePlayer(id); }
     }

@@ -236,7 +236,8 @@ function startNewTournament(tournamentName, rulesetName) {
   }
 
   try {
-    newSS.insertSheet("Players").appendRow(["Player ID", "Name", "Checked In"]);
+    // Generates the new 4-column layout for brand new files
+    newSS.insertSheet("Players").appendRow(["Player ID", "Name", "Checked In", "ARA ID"]);
     newSS.insertSheet("Settings").appendRow(["Key", "Value"]);
     
     const pList = newSS.insertSheet("Penalties_List");
@@ -420,24 +421,71 @@ function getNextSafeId(sheet) {
   return max + 1;
 }
 
-function addPlayer(name, manualId) {
+function addPlayer(name, manualId, araId) {
   const ss = getDataSS();
   let sheet = ss.getSheetByName("Players");
-  if (!sheet) { sheet = ss.insertSheet("Players"); sheet.appendRow(["Player ID", "Name"]); }
+  if (!sheet) { 
+      sheet = ss.insertSheet("Players"); 
+      sheet.appendRow(["Player ID", "Name", "Checked In", "ARA ID"]); 
+  }
+  
+  if (sheet.getRange(1, 4).getValue() !== "ARA ID") {
+      sheet.getRange(1, 4).setValue("ARA ID");
+  }
+
   let id = manualId || "P" + getNextSafeId(sheet);
-  sheet.appendRow([id, name]);
+  sheet.appendRow([id, name, "", araId || ""]);
   return getPlayers();
 }
 
 function addPlayersBulk(names) {
   const ss = getDataSS();
   let sheet = ss.getSheetByName("Players");
-  if (!sheet) { sheet = ss.insertSheet("Players"); sheet.appendRow(["Player ID", "Name"]); }
+  if (!sheet) { 
+      sheet = ss.insertSheet("Players"); 
+      sheet.appendRow(["Player ID", "Name", "Checked In", "ARA ID"]); 
+  }
+  
+  if (sheet.getRange(1, 4).getValue() !== "ARA ID") {
+      sheet.getRange(1, 4).setValue("ARA ID");
+  }
+
   let nextNum = getNextSafeId(sheet);
   const rows = [];
-  names.forEach(n => { if(n.trim()) { rows.push(["P" + nextNum, n.trim()]); nextNum++; } });
-  if (rows.length > 0) sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 2).setValues(rows);
+  names.forEach(line => { 
+      if(line.trim()) { 
+          // Splits safely by dash, assuming "Name - ARA ID" format
+          let parts = line.split(' - ');
+          let n = parts[0].trim();
+          let ara = parts.length > 1 ? parts.slice(1).join(' - ').trim() : "";
+          rows.push(["P" + nextNum, n, "", ara]); 
+          nextNum++; 
+      } 
+  });
+  
+  if (rows.length > 0) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 4).setValues(rows);
+  }
   return getPlayers();
+}
+
+function updateAraId(playerId, newAraId) {
+    const ss = getDataSS();
+    const sheet = ss.getSheetByName("Players");
+    if (!sheet) return getPlayers();
+    
+    if (sheet.getRange(1, 4).getValue() !== "ARA ID") {
+        sheet.getRange(1, 4).setValue("ARA ID");
+    }
+
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+        if (data[i][0].toString() === playerId.toString()) {
+            sheet.getRange(i + 1, 4).setValue(newAraId);
+            break;
+        }
+    }
+    return getPlayers();
 }
 
 function deletePlayer(playerId) {
@@ -473,11 +521,18 @@ function getPlayers() {
   const ss = getDataSS();
   const sheet = ss.getSheetByName("Players");
   if (!sheet || sheet.getLastRow() <= 1) return [];
+  
+  // Safely insert the new header on old spreadsheets if it doesn't exist
+  if (sheet.getRange(1, 4).getValue() !== "ARA ID") {
+      sheet.getRange(1, 4).setValue("ARA ID");
+  }
+
   const data = sheet.getDataRange().getValues();
   return data.slice(1).map(r => ({ 
       id: r[0], 
       name: r[1],
-      isCheckedIn: r[2] === true || r[2] === "true" || r[2] === "TRUE"
+      isCheckedIn: r[2] === true || r[2] === "true" || r[2] === "TRUE",
+      araId: r[3] || ""
   }));
 }
 
