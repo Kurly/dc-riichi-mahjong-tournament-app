@@ -603,185 +603,195 @@ function getPairingState() {
 }
 
 function generateNextRound(bucketCount, addSubs) {
-  const ss = getDataSS();
-  let pairSheet = ss.getSheetByName("Pairings");
-  if (!pairSheet) pairSheet = ss.insertSheet("Pairings");
-  const state = getPairingState();
-  const round = state.nextRound;
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (e) { return { success: false, message: "Server busy: Another admin is currently generating a round. Please try again." }; }
 
-  const allGames = getAllGamesData();
-  const currentRound = round - 1;
-  if (currentRound > 0 && allGames[currentRound]) {
-    const unscored = allGames[currentRound].filter(g => !g.isScored);
-    if (unscored.length > 0) {
-      return { success: false, message: `Cannot generate round. ${unscored.length} table(s) are missing scores in Round ${currentRound}.` };
+  try {
+    const ss = getDataSS();
+    let pairSheet = ss.getSheetByName("Pairings");
+    if (!pairSheet) pairSheet = ss.insertSheet("Pairings");
+    const state = getPairingState();
+    const round = state.nextRound;
+
+    const allGames = getAllGamesData();
+    const currentRound = round - 1;
+    if (currentRound > 0 && allGames[currentRound]) {
+      const unscored = allGames[currentRound].filter(g => !g.isScored);
+      if (unscored.length > 0) {
+        return { success: false, message: `Cannot generate round.\n${unscored.length} table(s) are missing scores in Round ${currentRound}.` };
+      }
     }
-  }
 
-  let players = getPlayers();
-  if (addSubs && players.length % 4 !== 0) {
-    const subsNeeded = 4 - (players.length % 4);
-    let subCount = players.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
-    for (let i = 0; i < subsNeeded; i++) {
-      subCount++;
-      addPlayer(`SUB ${subCount}`);
+    let players = getPlayers();
+    if (addSubs && players.length % 4 !== 0) {
+      const subsNeeded = 4 - (players.length % 4);
+      let subCount = players.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
+      for (let i = 0; i < subsNeeded; i++) {
+        subCount++;
+        addPlayer(`SUB ${subCount}`);
+      }
+      players = getPlayers();
     }
-    players = getPlayers();
-  }
 
-  if (players.length % 4 !== 0) {
-    return { success: false, message: "Cannot generate round. The number of players must be a multiple of 4." };
-  }
+    if (players.length % 4 !== 0) {
+      return { success: false, message: "Cannot generate round. The number of players must be a multiple of 4." };
+    }
 
-  // Optimize pairing lookup using Map of Sets
-  let historyMap = new Map();
-  players.forEach(p => historyMap.set(p.id, new Set()));
-  if (pairSheet.getLastRow() > 1) {
-    const data = pairSheet.getDataRange().getValues();
-    let inData = false;
-    for(let row of data) {
-      if(!row[0]) continue;
-      if(row[0].toString().includes("ROUND")) { inData = true; continue; }
-      if(inData && row[1]) {
-        let pIds = [row[1], row[2], row[3], row[4]];
-        for(let i=0; i<4; i++) {
-          for(let j=0; j<4; j++) {
-            if(i !== j && historyMap.has(pIds[i])) {
-                historyMap.get(pIds[i]).add(pIds[j]);
+    let historyMap = new Map();
+    players.forEach(p => historyMap.set(p.id, new Set()));
+    if (pairSheet.getLastRow() > 1) {
+      const data = pairSheet.getDataRange().getValues();
+      let inData = false;
+      for(let row of data) {
+        if(!row[0]) continue;
+        if(row[0].toString().includes("ROUND")) { inData = true; continue; }
+        if(inData && row[1]) {
+          let pIds = [row[1], row[2], row[3], row[4]];
+          for(let i=0; i<4; i++) {
+            for(let j=0; j<4; j++) {
+              if(i !== j && historyMap.has(pIds[i])) {
+                  historyMap.get(pIds[i]).add(pIds[j]);
+              }
             }
           }
         }
       }
     }
-  }
 
-  const mode = readSetting(ss, "Pairing_Mode", "scramble");
-  const cutEnabled = readSetting(ss, "Top_Cut_Enabled", "false") === "true";
-  const cutSize = parseInt(readSetting(ss, "Top_Cut_Size", 0));
-  const cutRound = parseInt(readSetting(ss, "Top_Cut_Round", 0));
-  let isCutActive = readSetting(ss, "Top_Cut_Active", "false") === "true";
-  let savedCutIDs = readSetting(ss, "Top_Cut_Player_IDs", "").split(",").filter(x => x);
-  let buckets = [];
-  let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive);
-  
-  if (shouldTrigger && cutRound > 0) {
-      if (round <= cutRound) shouldTrigger = false;
-  }
-
-  if (shouldTrigger) {
-      isCutActive = true;
-      const standings = getStandingsData();
-      let ranked = players.map(p => {
-          let s = standings.find(x => x.id === p.id);
-          return { ...p, pts: s ? s.totalScore : -9999 };
-      });
-      ranked.sort((a,b) => b.pts - a.pts);
-
-      let topPool = ranked.slice(0, cutSize);
-      let restPool = ranked.slice(cutSize);
-      
-      updateSheetSetting(ss, "Top_Cut_Start_Round", round);
-      updateSheetSetting(ss, "Top_Cut_Player_IDs", topPool.map(p=>p.id).join(","));
-      updateSheetSetting(ss, "Top_Cut_Active", "true");
-      
-      if (mode === 'swiss') {
-          buckets.push(topPool.sort(() => Math.random() - 0.5));
-          let remBuckets = Math.max(1, bucketCount - 1);
-          let total = restPool.length;
-          let baseSize = Math.floor((total / remBuckets) / 4) * 4;
-          let currentIdx = 0;
-          for (let i = 0; i < remBuckets; i++) {
-              let size = baseSize;
-              if (i === remBuckets - 1) size = total - currentIdx;
-              if (size > 0) {
-                  buckets.push(restPool.slice(currentIdx, currentIdx + size).sort(() => Math.random() - 0.5));
-                  currentIdx += size;
-              }
-          }
-      } else {
-          buckets.push(topPool.sort(() => Math.random() - 0.5));
-          buckets.push(restPool.sort(() => Math.random() - 0.5));
-      }
-  }
-  else if (isCutActive && savedCutIDs.length > 0) {
-      let topPool = players.filter(p => savedCutIDs.includes(p.id));
-      let restPool = players.filter(p => !savedCutIDs.includes(p.id));
-      
-      if (mode === 'swiss') {
-          const standings = getStandingsData();
-          const getStats = (pid) => standings.find(x => x.id === pid);
-          topPool.sort((a,b) => {
-              let sa = getStats(a.id); let sb = getStats(b.id);
-              return (sb ? sb.auxScore : -9999) - (sa ? sa.auxScore : -9999);
-          });
-          buckets.push(topPool); 
-          
-          restPool.sort((a,b) => {
-              let sa = getStats(a.id); let sb = getStats(b.id);
-              return (sb ? sb.totalScore : -9999) - (sa ? sa.totalScore : -9999);
-          });
-          let remBuckets = Math.max(1, bucketCount - 1);
-          let total = restPool.length;
-          let baseSize = Math.floor((total / remBuckets) / 4) * 4;
-          let currentIdx = 0;
-          for (let i = 0; i < remBuckets; i++) {
-              let size = baseSize;
-              if (i === remBuckets - 1) size = total - currentIdx;
-              if (size > 0) {
-                  buckets.push(restPool.slice(currentIdx, currentIdx + size));
-                  currentIdx += size;
-              }
-          }
-      } else {
-          buckets.push(topPool.sort(() => Math.random() - 0.5));
-          buckets.push(restPool.sort(() => Math.random() - 0.5));
-      }
-  }
-  else {
-      if (mode === 'swiss') buckets = recalculateSwissBuckets(players, bucketCount);
-      else buckets.push(players.sort(() => Math.random() - 0.5));
-  }
-  
-  updateSheetSetting(ss, "Last_Bucket_Count", bucketCount);
-
-  let roundTables = [];
-  let tableCounter = 1;
-  buckets.forEach((bucket, bIdx) => {
-    let pool = [...bucket];
-    let bucketChar = String.fromCharCode(65 + bIdx); 
-    let allowRepeats = (isCutActive && bIdx === 0);
-
-    while(pool.length >= 4) {
-      let bestTable = null;
-      let minRepeats = 999;
-      
-      if (allowRepeats) {
-          bestTable = pool.slice(0, 4);
-      } else {
-          for(let attempt=0; attempt<1000; attempt++) {
-            for (let i = pool.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [pool[i], pool[j]] = [pool[j], pool[i]];
-            }
-            let candidates = pool.slice(0, 4);
-            let repeats = countRepeats(candidates, historyMap);
-            if (repeats === 0) { bestTable = candidates; minRepeats = 0; break; }
-            if (repeats < minRepeats) { minRepeats = repeats; bestTable = candidates; }
-          }
-      }
-      
-      pool = pool.filter(p => !bestTable.includes(p));
-      roundTables.push([tableCounter++, bestTable[0].id, bestTable[1].id, bestTable[2].id, bestTable[3].id, bucketChar]);
+    const mode = readSetting(ss, "Pairing_Mode", "scramble");
+    const cutEnabled = readSetting(ss, "Top_Cut_Enabled", "false") === "true";
+    const cutSize = parseInt(readSetting(ss, "Top_Cut_Size", 0));
+    const cutRound = parseInt(readSetting(ss, "Top_Cut_Round", 0));
+    let isCutActive = readSetting(ss, "Top_Cut_Active", "false") === "true";
+    let savedCutIDs = readSetting(ss, "Top_Cut_Player_IDs", "").split(",").filter(x => x);
+    let buckets = [];
+    let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive);
+    if (shouldTrigger && cutRound > 0) {
+        if (round <= cutRound) shouldTrigger = false;
     }
-  });
 
-  let output = [[`--- ROUND ${round} (${mode.toUpperCase()}) ---`, "", "", "", "", ""]];
-  roundTables.forEach(row => output.push(row));
-  output.push(["", "", "", "", "", ""]); 
-  pairSheet.getRange(pairSheet.getLastRow() + 1, 1, output.length, 6).setValues(output);
-  return { success: true, message: `Generated Round ${round} pairings!` };
+    if (shouldTrigger) {
+        isCutActive = true;
+        const standings = getStandingsData();
+        let ranked = players.map(p => {
+            let s = standings.find(x => x.id === p.id);
+            return { ...p, pts: s ? s.totalScore : -9999 };
+        });
+        ranked.sort((a,b) => b.pts - a.pts);
+
+        let topPool = ranked.slice(0, cutSize);
+        let restPool = ranked.slice(cutSize);
+        
+        updateSheetSetting(ss, "Top_Cut_Start_Round", round);
+        updateSheetSetting(ss, "Top_Cut_Player_IDs", topPool.map(p=>p.id).join(","));
+        updateSheetSetting(ss, "Top_Cut_Active", "true");
+        
+        if (mode === 'swiss') {
+            buckets.push(topPool.sort(() => Math.random() - 0.5));
+            let remBuckets = Math.max(1, bucketCount - 1);
+            let total = restPool.length;
+            let baseSize = Math.floor((total / remBuckets) / 4) * 4;
+            let currentIdx = 0;
+            for (let i = 0; i < remBuckets; i++) {
+                let size = baseSize;
+                if (i === remBuckets - 1) size = total - currentIdx;
+                if (size > 0) {
+                    buckets.push(restPool.slice(currentIdx, currentIdx + size).sort(() => Math.random() - 0.5));
+                    currentIdx += size;
+                }
+            }
+        } else {
+            buckets.push(topPool.sort(() => Math.random() - 0.5));
+            buckets.push(restPool.sort(() => Math.random() - 0.5));
+        }
+    }
+    else if (isCutActive && savedCutIDs.length > 0) {
+        let topPool = players.filter(p => savedCutIDs.includes(p.id));
+        let restPool = players.filter(p => !savedCutIDs.includes(p.id));
+        
+        if (mode === 'swiss') {
+            const standings = getStandingsData();
+            const getStats = (pid) => standings.find(x => x.id === pid);
+            topPool.sort((a,b) => {
+                let sa = getStats(a.id); let sb = getStats(b.id);
+                return (sb ? sb.auxScore : -9999) - (sa ? sa.auxScore : -9999);
+            });
+            buckets.push(topPool); 
+            
+            restPool.sort((a,b) => {
+                let sa = getStats(a.id); let sb = getStats(b.id);
+                return (sb ? sb.totalScore : -9999) - (sa ? sa.totalScore : -9999);
+            });
+            let remBuckets = Math.max(1, bucketCount - 1);
+            let total = restPool.length;
+            let baseSize = Math.floor((total / remBuckets) / 4) * 4;
+            let currentIdx = 0;
+            for (let i = 0; i < remBuckets; i++) {
+                let size = baseSize;
+                if (i === remBuckets - 1) size = total - currentIdx;
+                if (size > 0) {
+                    buckets.push(restPool.slice(currentIdx, currentIdx + size));
+                    currentIdx += size;
+                }
+            }
+        } else {
+            buckets.push(topPool.sort(() => Math.random() - 0.5));
+            buckets.push(restPool.sort(() => Math.random() - 0.5));
+        }
+    }
+    else {
+        if (mode === 'swiss') buckets = recalculateSwissBuckets(players, bucketCount);
+        else buckets.push(players.sort(() => Math.random() - 0.5));
+    }
+    
+    updateSheetSetting(ss, "Last_Bucket_Count", bucketCount);
+
+    let roundTables = [];
+    let tableCounter = 1;
+    buckets.forEach((bucket, bIdx) => {
+      let pool = [...bucket];
+      let bucketChar = String.fromCharCode(65 + bIdx); 
+      let allowRepeats = (isCutActive && bIdx === 0);
+
+      while(pool.length >= 4) {
+        let bestTable = null;
+        let minRepeats = 999;
+        
+        if (allowRepeats) {
+            bestTable = pool.slice(0, 4);
+        } else {
+            for(let attempt=0; attempt<1000; attempt++) {
+              for (let i = pool.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [pool[i], pool[j]] = [pool[j], pool[i]];
+              }
+              let candidates = pool.slice(0, 4);
+              let repeats = countRepeats(candidates, historyMap);
+              if (repeats === 0) { bestTable = candidates; minRepeats = 0; break; }
+              if (repeats < minRepeats) { minRepeats = repeats; bestTable = candidates; }
+            }
+        }
+        
+        pool = pool.filter(p => !bestTable.includes(p));
+        roundTables.push([tableCounter++, bestTable[0].id, bestTable[1].id, bestTable[2].id, bestTable[3].id, bucketChar]);
+      }
+    });
+
+    let output = [[`--- ROUND ${round} (${mode.toUpperCase()}) ---`, "", "", "", "", ""]];
+    roundTables.forEach(row => output.push(row));
+    output.push(["", "", "", "", "", ""]); 
+    pairSheet.getRange(pairSheet.getLastRow() + 1, 1, output.length, 6).setValues(output);
+    
+    SpreadsheetApp.flush();
+    clearCache();
+
+    return { success: true, message: `Generated Round ${round} pairings!` };
+  } catch(e) {
+    return { success: false, message: "Error generating round: " + e.message };
+  } finally {
+    lock.releaseLock();
+  }
 }
-
 function recalculateSwissBuckets(players, bucketCount) {
     const standings = getStandingsData();
     let ranked = players.map(p => {
@@ -872,72 +882,99 @@ function checkIfScored(round, gameId, p1Id, p2Id, p3Id, p4Id) {
 }
 
 function saveScores(form) {
-  // ... (Leave the top part of your logic untouched down to the actual write operation) ...
-  const ss = getDataSS();
-  let sheet = ss.getSheetByName("Scores");
-  if (!sheet) sheet = ss.insertSheet("Scores");
-  const settings = getFullSettings();
-  const start = Number(settings.startPoints);
-  let u1 = Number(settings.uma1);
-  let u2 = Number(settings.uma2);
-
-  if (Math.abs(u1) < 1000 && u1 !== 0) u1 *= 1000;
-  if (Math.abs(u2) < 1000 && u2 !== 0) u2 *= 1000;
-
-  const tieRule = settings.tiebreakerRule || 'split';
-  const g = form.game;
-  let pData = [ { id: g.p1Id, s: Number(g.p1Score), k: 'p1' }, { id: g.p2Id, s: Number(g.p2Score), k: 'p2' }, { id: g.p3Id, s: Number(g.p3Score), k: 'p3' }, { id: g.p4Id, s: Number(g.p4Score), k: 'p4' } ];
-  const bonuses = [u1, u2, -u2, -u1];
-  let res = {};
-  if (tieRule === 'head_bump' && form.rankedIds) {
-      pData.sort((a, b) => {
-         if (b.s !== a.s) return b.s - a.s; 
-         return form.rankedIds.indexOf(a.id) - form.rankedIds.indexOf(b.id);
-      });
-      pData.forEach((p, idx) => { res[p.k] = { raw: p.s, final: ((p.s - start) + bonuses[idx]) / 1000 }; });
-  } else {
-      pData.sort((a, b) => b.s - a.s);
-      let scoreGroups = new Map();
-      pData.forEach((p, i) => {
-          if (!scoreGroups.has(p.s)) scoreGroups.set(p.s, { players: [], totalBonus: 0 });
-          let group = scoreGroups.get(p.s);
-          group.players.push(p);
-          group.totalBonus += bonuses[i];
-      });
-      scoreGroups.forEach((group, score) => {
-          let avgBonus = group.totalBonus / group.players.length;
-          group.players.forEach(p => {
-              res[p.k] = { raw: p.s, final: ((p.s - start) + avgBonus) / 1000 };
-          });
-      });
+  const lock = LockService.getScriptLock();
+  try { 
+    lock.waitLock(30000); // Wait up to 30 seconds for the lock to clear
+  } catch (e) { 
+    return { success: false, message: "Server busy: Another admin is currently saving. Please try again." }; 
   }
 
-  const check = checkIfScored(form.round, g.gameId);
-  const rowData = [ new Date(), form.round, g.gameId, g.p1Id, res.p1.raw, res.p1.final, g.p2Id, res.p2.raw, res.p2.final, g.p3Id, res.p3.raw, res.p3.final, g.p4Id, res.p4.raw, res.p4.final, g.leftoverScore ];
-  if (check.scored && check.rowIndex) { sheet.getRange(check.rowIndex, 1, 1, rowData.length).setValues([rowData]); }
-  else { sheet.appendRow(rowData); }
-  
-  clearCache(); // New: Invalidate so standings recalculate fresh
-  updateLeaderboardSheet();
-  return { success: true, message: check.scored ? "Updated existing score." : "Saved new score." };
+  try {
+    const ss = getDataSS();
+    let sheet = ss.getSheetByName("Scores");
+    if (!sheet) sheet = ss.insertSheet("Scores");
+    const settings = getFullSettings();
+    const start = Number(settings.startPoints);
+    let u1 = Number(settings.uma1);
+    let u2 = Number(settings.uma2);
+
+    if (Math.abs(u1) < 1000 && u1 !== 0) u1 *= 1000;
+    if (Math.abs(u2) < 1000 && u2 !== 0) u2 *= 1000;
+
+    const tieRule = settings.tiebreakerRule || 'split';
+    const g = form.game;
+    let pData = [ { id: g.p1Id, s: Number(g.p1Score), k: 'p1' }, { id: g.p2Id, s: Number(g.p2Score), k: 'p2' }, { id: g.p3Id, s: Number(g.p3Score), k: 'p3' }, { id: g.p4Id, s: Number(g.p4Score), k: 'p4' } ];
+    const bonuses = [u1, u2, -u2, -u1];
+    let res = {};
+
+    if (tieRule === 'head_bump' && form.rankedIds) {
+        pData.sort((a, b) => {
+           if (b.s !== a.s) return b.s - a.s; 
+           return form.rankedIds.indexOf(a.id) - form.rankedIds.indexOf(b.id);
+        });
+        pData.forEach((p, idx) => { res[p.k] = { raw: p.s, final: ((p.s - start) + bonuses[idx]) / 1000 }; });
+    } else {
+        pData.sort((a, b) => b.s - a.s);
+        let scoreGroups = new Map();
+        pData.forEach((p, i) => {
+            if (!scoreGroups.has(p.s)) scoreGroups.set(p.s, { players: [], totalBonus: 0 });
+            let group = scoreGroups.get(p.s);
+            group.players.push(p);
+            group.totalBonus += bonuses[i];
+        });
+        scoreGroups.forEach((group, score) => {
+            let avgBonus = group.totalBonus / group.players.length;
+            group.players.forEach(p => {
+                res[p.k] = { raw: p.s, final: ((p.s - start) + avgBonus) / 1000 };
+            });
+        });
+    }
+
+    const check = checkIfScored(form.round, g.gameId);
+    const rowData = [ new Date(), form.round, g.gameId, g.p1Id, res.p1.raw, res.p1.final, g.p2Id, res.p2.raw, res.p2.final, g.p3Id, res.p3.raw, res.p3.final, g.p4Id, res.p4.raw, res.p4.final, g.leftoverScore ];
+    if (check.scored && check.rowIndex) { sheet.getRange(check.rowIndex, 1, 1, rowData.length).setValues([rowData]); }
+    else { sheet.appendRow(rowData); }
+    
+    SpreadsheetApp.flush();
+    clearCache(); 
+    updateLeaderboardSheet();
+    return { success: true, message: check.scored ? "Updated existing score." : "Saved new score." };
+  } catch (e) {
+    return { success: false, message: "Error saving score: " + e.message };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 
 function addPenalty(round, table, playerId, points, reason, notes) {
-  const ss = getDataSS();
-  let sheet = ss.getSheetByName("Penalties");
-  if (!sheet) { sheet = ss.insertSheet("Penalties"); sheet.appendRow(["Timestamp", "Player ID", "Points Deducted", "Reason", "Round", "Table", "Notes"]); }
-  
-  let pts = Number(points);
-  if (isNaN(pts)) pts = 0; 
-  if (Math.abs(pts) < 1000 && pts !== 0) pts *= 1000;
-  sheet.appendRow([new Date(), playerId, pts, reason, round, table, notes]);
-  
-  clearCache(); // New: Wipe memory before recalculating
-  updateLeaderboardSheet();
-  return { success: true, message: "Penalty Added." };
-}
+  const lock = LockService.getScriptLock();
+  try { 
+    lock.waitLock(30000); 
+  } catch (e) { 
+    return { success: false, message: "Server busy: Another admin is currently saving. Please try again." }; 
+  }
 
+  try {
+    const ss = getDataSS();
+    let sheet = ss.getSheetByName("Penalties");
+    if (!sheet) { sheet = ss.insertSheet("Penalties"); sheet.appendRow(["Timestamp", "Player ID", "Points Deducted", "Reason", "Round", "Table", "Notes"]); }
+    
+    let pts = Number(points);
+    if (isNaN(pts)) pts = 0; 
+    if (Math.abs(pts) < 1000 && pts !== 0) pts *= 1000;
+    sheet.appendRow([new Date(), playerId, pts, reason, round, table, notes]);
+    
+    SpreadsheetApp.flush();
+    clearCache(); 
+    updateLeaderboardSheet();
+    return { success: true, message: "Penalty Added." };
+  } catch (e) {
+    return { success: false, message: "Error adding penalty: " + e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
 function getRecentPenalties() {
   const data = getCachedSheetData("Penalties");
   if (!data || data.length <= 1) return [];
@@ -1227,158 +1264,154 @@ function togglePlayerCheckIn(playerId) {
 }
 
 function beginTournamentRepair() {
-    const ss = getDataSS();
-    const pairSheet = ss.getSheetByName("Pairings");
-    const playersSheet = ss.getSheetByName("Players");
-    const players = getPlayers();
-    
-    const missingIds = players.filter(p => !p.isCheckedIn).map(p => String(p.id));
-    
-    // If everyone checked in, simply start the tournament
-    if (missingIds.length === 0) {
-        updateSheetSetting(ss, "Tourney_Begun", "true");
-        return { success: true, message: "Tournament begun successfully!" };
+    const lock = LockService.getScriptLock();
+    try { lock.waitLock(30000); } catch (e) { return { success: false, message: "Server busy: Another admin is currently saving. Please try again." }; }
+
+    try {
+      const ss = getDataSS();
+      const pairSheet = ss.getSheetByName("Pairings");
+      const playersSheet = ss.getSheetByName("Players");
+      const players = getPlayers();
+      
+      const missingIds = players.filter(p => !p.isCheckedIn).map(p => String(p.id));
+      
+      if (missingIds.length === 0) {
+          updateSheetSetting(ss, "Tourney_Begun", "true");
+          return { success: true, message: "Tournament begun successfully!" };
+      }
+
+      const pData = playersSheet.getDataRange().getValues();
+      for (let i = 1; i < pData.length; i++) {
+          if (missingIds.includes(String(pData[i][0]))) {
+              let cur = pData[i][1].toString();
+              if (!cur.startsWith("[DNF] ")) {
+                  playersSheet.getRange(i + 1, 2).setValue("[DNF] " + cur);
+              }
+          }
+      }
+      SpreadsheetApp.flush();
+
+      const pairData = pairSheet.getDataRange().getValues();
+      let round1StartIndex = -1;
+      let round1EndIndex = -1;
+      
+      for (let i = 0; i < pairData.length; i++) {
+          if (!pairData[i][0]) continue;
+          let cell = String(pairData[i][0]).toUpperCase();
+          if (cell.includes("ROUND 1")) {
+              round1StartIndex = i;
+          } else if (cell.includes("ROUND") && round1StartIndex !== -1) {
+              round1EndIndex = i;
+              break;
+          }
+      }
+      if (round1EndIndex === -1) round1EndIndex = pairData.length;
+
+      if (round1StartIndex === -1) {
+          updateSheetSetting(ss, "Tourney_Begun", "true");
+          return { success: true, message: "Started, but could not find Round 1 to repair." };
+      }
+
+      let tables = [];
+      for (let i = round1StartIndex + 1; i < round1EndIndex; i++) {
+          let row = pairData[i];
+          if (!isNaN(parseInt(row[0]))) {
+              tables.push({
+                  tableId: row[0],
+                  seats: [row[1], row[2], row[3], row[4]],
+                  bucket: row[5] || ""
+              });
+          }
+      }
+
+      let moves = [];
+      let subsAdded = [];
+
+      tables.forEach(t => {
+          for (let s = 0; s < 4; s++) {
+              if (missingIds.includes(String(t.seats[s]))) {
+                  t.seats[s] = null;
+              }
+          }
+      });
+
+      for (let i = 0; i < tables.length; i++) {
+          for (let j = 0; j < 4; j++) {
+              if (tables[i].seats[j] === null) {
+                  let found = false;
+                  for (let k = tables.length - 1; k >= i; k--) {
+                      for (let s = 3; s >= 0; s--) {
+                          if (k === i && s <= j) continue;
+                          if (tables[k].seats[s] !== null) {
+                              let movingPid = tables[k].seats[s];
+                              let pObj = players.find(p => p.id === movingPid);
+                              let pName = pObj ? pObj.name : movingPid;
+                              
+                              tables[i].seats[j] = movingPid;
+                              tables[k].seats[s] = null;
+                              
+                              moves.push(`${pName} moved from Table ${tables[k].tableId} -> Table ${i + 1}`);
+                              found = true;
+                              break;
+                          }
+                      }
+                      if (found) break;
+                  }
+              }
+          }
+      }
+
+      tables = tables.filter(t => t.seats.some(seat => seat !== null));
+
+      if (tables.length > 0) {
+          let lastTable = tables[tables.length - 1];
+          let currentSubs = players.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
+          
+          let needsSub = lastTable.seats.some(seat => seat === null);
+          if (needsSub) {
+              for (let j = 0; j < 4; j++) {
+                  if (lastTable.seats[j] === null) {
+                      currentSubs++;
+                      let subId = "P" + getNextSafeId(playersSheet);
+                      let subName = "SUB " + currentSubs;
+                      playersSheet.appendRow([subId, subName, true]); 
+                      lastTable.seats[j] = subId;
+                      subsAdded.push(`${subName} added to Table ${tables.length}`);
+                  }
+              }
+              SpreadsheetApp.flush();
+          }
+      }
+
+      pairSheet.getRange(round1StartIndex + 2, 1, round1EndIndex - (round1StartIndex + 2), 6).clearContent();
+      
+      let output = [];
+      let tCounter = 1;
+      tables.forEach(t => {
+          output.push([tCounter++, t.seats[0], t.seats[1], t.seats[2], t.seats[3], t.bucket]);
+      });
+      output.push(["", "", "", "", "", ""]);
+
+      if (output.length > 0) {
+          pairSheet.getRange(round1StartIndex + 2, 1, output.length, 6).setValues(output);
+      }
+
+      updateSheetSetting(ss, "Tourney_Begun", "true");
+      SpreadsheetApp.flush();
+      clearCache();
+
+      let finalMessage = "Tournament begun and Round 1 pairings repaired!";
+      if (moves.length > 0) {
+          finalMessage += "\n\n--- Player Movements ---\n" + moves.join("\n");
+      }
+      if (subsAdded.length > 0) {
+          finalMessage += "\n\n--- Subs Added ---\n" + subsAdded.join("\n");
+      }
+
+      return { success: true, message: finalMessage };
+    } catch(e) {
+      return { success: false, message: "Error repairing pairings: " + e.message };
+    } finally {
+      lock.releaseLock();
     }
-
-    // --- Apply DNF to missing players so they don't get paired in Round 2 ---
-    const pData = playersSheet.getDataRange().getValues();
-    for (let i = 1; i < pData.length; i++) {
-        if (missingIds.includes(String(pData[i][0]))) {
-            let cur = pData[i][1].toString();
-            if (!cur.startsWith("[DNF] ")) {
-                playersSheet.getRange(i + 1, 2).setValue("[DNF] " + cur);
-            }
-        }
-    }
-    SpreadsheetApp.flush();
-
-    // --- Read Pairings for Round 1 ---
-    const pairData = pairSheet.getDataRange().getValues();
-    let round1StartIndex = -1;
-    let round1EndIndex = -1;
-    
-    for (let i = 0; i < pairData.length; i++) {
-        if (!pairData[i][0]) continue;
-        let cell = String(pairData[i][0]).toUpperCase();
-        if (cell.includes("ROUND 1")) {
-            round1StartIndex = i;
-        } else if (cell.includes("ROUND") && round1StartIndex !== -1) {
-            round1EndIndex = i;
-            break;
-        }
-    }
-    if (round1EndIndex === -1) round1EndIndex = pairData.length;
-
-    if (round1StartIndex === -1) {
-        updateSheetSetting(ss, "Tourney_Begun", "true");
-        return { success: true, message: "Started, but could not find Round 1 to repair." };
-    }
-
-    let tables = [];
-    for (let i = round1StartIndex + 1; i < round1EndIndex; i++) {
-        let row = pairData[i];
-        if (!isNaN(parseInt(row[0]))) {
-            tables.push({
-                tableId: row[0],
-                seats: [row[1], row[2], row[3], row[4]],
-                bucket: row[5] || ""
-            });
-        }
-    }
-
-    // --- Execute Repair Algorithm & Track Movements ---
-    let moves = [];
-    let subsAdded = [];
-
-    // 1. Set missing players to null
-    tables.forEach(t => {
-        for (let s = 0; s < 4; s++) {
-            if (missingIds.includes(String(t.seats[s]))) {
-                t.seats[s] = null;
-            }
-        }
-    });
-
-    // 2. Condense from the back (Highest numbered table's players fill in the empty lower table holes)
-    for (let i = 0; i < tables.length; i++) {
-        for (let j = 0; j < 4; j++) {
-            if (tables[i].seats[j] === null) {
-                let found = false;
-                for (let k = tables.length - 1; k >= i; k--) {
-                    for (let s = 3; s >= 0; s--) {
-                        if (k === i && s <= j) continue;
-                        if (tables[k].seats[s] !== null) {
-                            let movingPid = tables[k].seats[s];
-                            
-                            // Look up the player's name for the alert box
-                            let pObj = players.find(p => p.id === movingPid);
-                            let pName = pObj ? pObj.name : movingPid;
-                            
-                            tables[i].seats[j] = movingPid;
-                            tables[k].seats[s] = null;
-                            
-                            // Record the movement (Using i + 1 because that represents their new dynamic table number)
-                            moves.push(`${pName} moved from Table ${tables[k].tableId} -> Table ${i + 1}`);
-                            
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (found) break;
-                }
-            }
-        }
-    }
-
-    // 3. Filter completely empty tables
-    tables = tables.filter(t => t.seats.some(seat => seat !== null));
-
-    // 4. Fill last table with newly created SUB players if it is missing people
-    if (tables.length > 0) {
-        let lastTable = tables[tables.length - 1];
-        let currentSubs = players.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
-        
-        let needsSub = lastTable.seats.some(seat => seat === null);
-        if (needsSub) {
-            for (let j = 0; j < 4; j++) {
-                if (lastTable.seats[j] === null) {
-                    currentSubs++;
-                    let subId = "P" + getNextSafeId(playersSheet);
-                    let subName = "SUB " + currentSubs;
-                    playersSheet.appendRow([subId, subName, true]); // Give sub an ID and automatically Check In
-                    lastTable.seats[j] = subId;
-                    
-                    subsAdded.push(`${subName} added to Table ${tables.length}`);
-                }
-            }
-            SpreadsheetApp.flush();
-        }
-    }
-
-    // 5. Re-write the Pairings sheet
-    pairSheet.getRange(round1StartIndex + 2, 1, round1EndIndex - (round1StartIndex + 2), 6).clearContent();
-    
-    let output = [];
-    let tCounter = 1;
-    tables.forEach(t => {
-        output.push([tCounter++, t.seats[0], t.seats[1], t.seats[2], t.seats[3], t.bucket]);
-    });
-    output.push(["", "", "", "", "", ""]);
-
-    if (output.length > 0) {
-        pairSheet.getRange(round1StartIndex + 2, 1, output.length, 6).setValues(output);
-    }
-
-    updateSheetSetting(ss, "Tourney_Begun", "true");
-
-    // --- Build Final Alert Message ---
-    let finalMessage = "Tournament begun and Round 1 pairings repaired!";
-    if (moves.length > 0) {
-        finalMessage += "\n\n--- Player Movements ---\n" + moves.join("\n");
-    }
-    if (subsAdded.length > 0) {
-        finalMessage += "\n\n--- Subs Added ---\n" + subsAdded.join("\n");
-    }
-
-    return { success: true, message: finalMessage };
 }
