@@ -9,12 +9,9 @@ function doGet(e) {
   if (portal === 'admin') {
     template = HtmlService.createTemplateFromFile('admin');
     title = '🏆 Tournament Admin';
-  } else if (portal === 'player') {
-    template = HtmlService.createTemplateFromFile('player');
-    title = 'Player Portal';
   } else {
     template = HtmlService.createTemplateFromFile('index');
-    title = 'Mahjong Portal';
+    title = 'Player Portal';
   }
 
   return template.evaluate()
