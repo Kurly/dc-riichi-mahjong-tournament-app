@@ -1114,12 +1114,15 @@ function updateLeaderboardSheet() {
   const ss = getDataSS();
   let sheet = ss.getSheetByName("Leaderboard");
   if (!sheet) sheet = ss.insertSheet("Leaderboard");
+  
   const standings = getStandingsData();
   const rows = standings.map(p => [ p.rank, p.id, p.name, p.played, p.displayScore ]);
   
   sheet.clear();
-  sheet.appendRow(["Rank", "Player ID", "Name", "Games Played", "Total Points"]);
-  if (rows.length > 0) sheet.getRange(2, 1, rows.length, 5).setValues(rows);
+  
+  // Combine header and data into a single array for one bulk write operation
+  const output = [["Rank", "Player ID", "Name", "Games Played", "Total Points"], ...rows];
+  sheet.getRange(1, 1, output.length, 5).setValues(output);
 }
 
 /* ==================================================

@@ -409,8 +409,13 @@ function renderRoster() {
         const tbody = document.getElementById('rosterBody');
         const checkedCount = DATA.players.filter(p => p.isCheckedIn).length;
         document.getElementById('rosterCount').textContent = `(${checkedCount}/${DATA.players.length} Checked In)`;
-        tbody.innerHTML = DATA.players.length ? "" : "<tr><td colspan='5' style='text-align:center;'>No players</td></tr>";
         
+        if (DATA.players.length === 0) {
+            tbody.innerHTML = "<tr><td colspan='5' style='text-align:center;'>No players</td></tr>";
+            return;
+        }
+        
+        let html = "";
         DATA.players.forEach(p => {
             const safe = p.name.replace(/'/g, "\\'");
             const cleanName = p.name.replace("[DNF] ", "").replace(/'/g, "\\'");
@@ -418,7 +423,7 @@ function renderRoster() {
             const checkText = p.isCheckedIn ? "✓ IN" : "Check In";
             const araDisplay = p.araId ? p.araId : "<span style='color:#ccc;'>-</span>";
             
-            tbody.innerHTML += `<tr>
+            html += `<tr>
                 <td style="width:80px;"><button class="btn ${checkClass}" style="width:100%; padding:5px; font-size:0.8em; margin:0;" onclick="actionToggleCheckIn('${p.id}')">${checkText}</button></td>
                 <td style="color:#3498db; font-weight:bold;">${p.id}</td>
                 <td>${p.name}</td>
@@ -437,6 +442,7 @@ function renderRoster() {
             </tr>`;
         });
         
+        tbody.innerHTML = html;
         if (typeof filterRoster === 'function') filterRoster();
     }
 function togglePlayerActions(id) {
@@ -991,10 +997,16 @@ function actionBulk() {
     
 function renderPenalties() {
         const body = document.getElementById('penHistory');
-        body.innerHTML = "";
+        
+        if (DATA.penalties.length === 0) {
+            body.innerHTML = "";
+            return;
+        }
+
+        let html = "";
         DATA.penalties.forEach(p => {
             let ptsDisplay = (p.points == 0) ? `<span style="color:#aaa;">0</span>` : `<span style="color:#c0392b; font-weight:bold;">-${p.points}</span>`;
-            body.innerHTML += `<tr>
+            html += `<tr>
                 <td style="font-size:0.85em; color:#7f8c8d;">${p.date}</td>
                 <td style="font-weight:bold; text-align:center;">${p.round}</td>
                 <td style="font-weight:bold; text-align:center;">${p.table}</td>
@@ -1007,6 +1019,8 @@ function renderPenalties() {
                 </td>
             </tr>`;
         });
+        
+        body.innerHTML = html;
     }
 
     function actionDeletePenalty(rawDate, playerId) {
