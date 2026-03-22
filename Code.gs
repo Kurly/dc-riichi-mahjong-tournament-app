@@ -622,19 +622,23 @@ function generateNextRound(bucketCount, addSubs) {
       }
     }
 
-    let players = getPlayers();
+    let allPlayers = getPlayers();
+    // Filter out DNF players so they are not assigned to tables
+    let players = allPlayers.filter(p => !p.name.toUpperCase().startsWith("[DNF]"));
+    
     if (addSubs && players.length % 4 !== 0) {
       const subsNeeded = 4 - (players.length % 4);
-      let subCount = players.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
+      let subCount = allPlayers.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
       for (let i = 0; i < subsNeeded; i++) {
         subCount++;
         addPlayer(`SUB ${subCount}`);
       }
-      players = getPlayers();
+      allPlayers = getPlayers();
+      players = allPlayers.filter(p => !p.name.toUpperCase().startsWith("[DNF]"));
     }
 
     if (players.length % 4 !== 0) {
-      return { success: false, message: "Cannot generate round. The number of players must be a multiple of 4." };
+      return { success: false, message: "Cannot generate round. The number of active players must be a multiple of 4." };
     }
 
     let historyMap = new Map();
@@ -687,8 +691,9 @@ function generateNextRound(bucketCount, addSubs) {
         updateSheetSetting(ss, "Top_Cut_Active", "true");
         
         if (mode === 'swiss') {
-            buckets.push(topPool.sort(() => Math.random() - 0.5));
-            let remBuckets = Math.max(1, bucketCount - 1);
+            buckets.push(topPool.sort(() => Math.random() - 0.5)); 
+            
+            let remBuckets = Math.max(1, parseInt(bucketCount, 10) - 1);
             let total = restPool.length;
             let baseSize = Math.floor((total / remBuckets) / 4) * 4;
             let currentIdx = 0;
@@ -712,17 +717,19 @@ function generateNextRound(bucketCount, addSubs) {
         if (mode === 'swiss') {
             const standings = getStandingsData();
             const getStats = (pid) => standings.find(x => x.id === pid);
+            
             topPool.sort((a,b) => {
                 let sa = getStats(a.id); let sb = getStats(b.id);
                 return (sb ? sb.auxScore : -9999) - (sa ? sa.auxScore : -9999);
             });
-            buckets.push(topPool); 
+            buckets.push(topPool.sort(() => Math.random() - 0.5)); 
             
             restPool.sort((a,b) => {
                 let sa = getStats(a.id); let sb = getStats(b.id);
                 return (sb ? sb.totalScore : -9999) - (sa ? sa.totalScore : -9999);
             });
-            let remBuckets = Math.max(1, bucketCount - 1);
+            
+            let remBuckets = Math.max(1, parseInt(bucketCount, 10) - 1);
             let total = restPool.length;
             let baseSize = Math.floor((total / remBuckets) / 4) * 4;
             let currentIdx = 0;
@@ -730,7 +737,7 @@ function generateNextRound(bucketCount, addSubs) {
                 let size = baseSize;
                 if (i === remBuckets - 1) size = total - currentIdx;
                 if (size > 0) {
-                    buckets.push(restPool.slice(currentIdx, currentIdx + size));
+                    buckets.push(restPool.slice(currentIdx, currentIdx + size).sort(() => Math.random() - 0.5));
                     currentIdx += size;
                 }
             }
@@ -760,6 +767,8 @@ function generateNextRound(bucketCount, addSubs) {
         if (allowRepeats) {
             bestTable = pool.slice(0, 4);
         } else {
+            // Randomly shuffle the remaining bucket pool up to 1000 times 
+            // to find a table combination where no one has played each other
             for(let attempt=0; attempt<1000; attempt++) {
               for (let i = pool.length - 1; i > 0; i--) {
                   const j = Math.floor(Math.random() * (i + 1));
@@ -798,15 +807,22 @@ function recalculateSwissBuckets(players, bucketCount) {
       let s = standings.find(x => x.id === p.id);
       return { ...p, pts: s ? s.totalScore : -9999 };
     });
+    
+    // Sort by points descending to establish the tiers
     ranked.sort((a,b) => b.pts - a.pts);
+    
     let buckets = [];
     let total = ranked.length;
-    let baseSize = Math.floor((total / bucketCount) / 4) * 4;
+    let bCountNum = parseInt(bucketCount, 10) || 1;
+    let baseSize = Math.floor((total / bCountNum) / 4) * 4;
     let currentIdx = 0;
-    for (let i = 0; i < bucketCount; i++) {
-      let size = (i === bucketCount - 1) ? total - currentIdx : baseSize;
+    
+    for (let i = 0; i < bCountNum; i++) {
+      let size = (i === bCountNum - 1) ? total - currentIdx : baseSize;
       let slice = ranked.slice(currentIdx, currentIdx + size);
       currentIdx += size;
+      
+      // Randomly shuffle the players within this specific score bucket
       buckets.push(slice.sort(() => Math.random() - 0.5));
     }
     return buckets;
