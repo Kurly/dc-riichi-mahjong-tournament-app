@@ -73,7 +73,6 @@
 /* === COLUMN WIDTHS === */
     .col-rank { left: 0; width: 45px; min-width: 45px; max-width: 45px; text-align: center; padding: 0 5px; }
     .col-id { left: 45px; width: 55px; min-width: 55px; max-width: 55px; text-align: center; padding: 0 5px;  }
-    .col-name { left: 100px; text-align: left; border-right: 2px solid #2c3e50; min-width: 120px; }
     
     .sch-id { left: 0; width: 55px; min-width: 55px; max-width: 55px; text-align: center; padding: 0 5px;  }
     .sch-name { left: 55px; text-align: left; border-right: 2px solid #2c3e50; min-width: 120px; }
@@ -82,13 +81,61 @@
     td.col-rank { font-weight: bold; color: #999; }
     td.col-name, td.sch-name { color: #2c3e50; border-right: 2px solid #ddd; }
 
-    /* SCORES */
-    .pos { color: #27ae60; font-weight: bold; } 
-    .neg { color: #e74c3c; font-weight: bold; }
-    .total-cell { font-weight: 800; font-size: 1.1em; background: #f9f9f9; }
-    .cut-score { font-size: 1.2em; font-weight: 900; }
-    .t-badge { background: #e1f5fe; color: #0277bd; padding: 3px 8px; border-radius: 6px; font-weight: bold; }
-    .pen-val { color: #e74c3c; font-weight: bold; font-size: 0.9em; }
+    /* === THEME VARIABLES === */
+    :root {
+      --bg-color: #f0f2f5;
+      --text-color: #333;
+      --card-bg-color: #fff;
+      --header-bg-color: #34495e;
+      --header-text-color: #fff;
+      --header-subtext-color: #bdc3c7;
+      --row-hover-bg: #f9f9f9;
+      --score-pos-color: #27ae60;
+      --score-neg-color: #e74c3c;
+      --row-dnf-bg: #f9f9f9;
+      --row-dnf-text: #e74c3c;
+      --badge-bg: #e1f5fe;
+      --badge-text: #0277bd;
+      --table-border: #eee;
+      --name-color: #2c3e50;
+      --btn-green: #27ae60;
+    }
+
+    .cherry-blossom {
+      --bg-color: #FFEBF0; 
+      --text-color: #C9184A; 
+      --card-bg-color: #FFFBFE; 
+      --header-bg-color: #C9184A; 
+      --header-text-color: #FFFBFE; 
+      --header-subtext-color: #FFCCD5; 
+      --row-hover-bg: #FFCCD5; 
+      --score-pos-color: #FF4D6D; 
+      --score-neg-color: #7B1028; 
+      --row-dnf-bg: #FCE8EB; 
+      --row-dnf-text: #B91C4A; 
+      --badge-bg: #FF4D6D; 
+      --badge-text: #FFFBFE; 
+      --table-border: #FFCCD5;
+      --name-color: #C9184A;
+      --btn-green: #FF4D6D;
+    }
+
+    body { background: var(--bg-color); color: var(--text-color); }
+    .card { background: var(--card-bg-color); }
+    .nav { background: var(--header-bg-color); color: var(--header-text-color); }
+    .tourney-label { color: var(--header-subtext-color); }
+    th { background: var(--header-bg-color); color: var(--header-text-color); border-bottom: 2px solid var(--header-bg-color); }
+    th.sticky-col { background: var(--header-bg-color); outline: 1px solid var(--header-bg-color); }
+    td { background: var(--card-bg-color); border-bottom: 1px solid var(--table-border); }
+    td.sticky-col { background: var(--card-bg-color); border-right: 1px solid var(--table-border); }
+    td.col-name, td.sch-name { color: var(--name-color); border-right: 2px solid var(--table-border); }
+    .pos { color: var(--score-pos-color); font-weight: bold; } 
+    .neg { color: var(--score-neg-color); font-weight: bold; }
+    .t-badge { background: var(--badge-bg); color: var(--badge-text); padding: 3px 8px; border-radius: 6px; font-weight: bold; }
+    .row-dnf td { color: #aaa !important; background-color: var(--row-dnf-bg) !important; }
+    .row-dnf td.sticky-col { background-color: var(--row-dnf-bg) !important; }
+    .dnf-text { color: var(--row-dnf-text); font-weight: bold; font-style: italic; }
+    .refresh-btn { background: var(--btn-green) !important; }
     
     /* DNF */
     .row-dnf td { color: #aaa !important; background-color: #f9f9f9 !important; }
@@ -127,11 +174,11 @@
   </div>
 
 <div class="nav">
+    <button class="btn refresh-btn" onclick="actionRefresh()" style="position: absolute; top: 15px; right: 15px; margin: 0; padding: 0; width: 36px; height: 36px; border-radius: 50%; font-size: 1.2em; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" title="Refresh Data">↻</button>
     <div id="tourneyLabel" class="tourney-label">Loading...</div>
     <h2 id="pageTitle" style="margin:0;">Standings</h2>
     <div style="margin-top: 10px;">
         <button class="btn" onclick="toggleView()" id="btnToggle" style="margin-top:0;">View Pairings</button>
-        <button class="btn" onclick="actionRefresh()" style="margin-top:0; margin-left: 5px; background: #27ae60;">↻ Refresh</button>
     </div>
     <input type="text" class="search" id="search" placeholder="Search name or ID..." onkeyup="filter()">
   </div>
@@ -174,7 +221,7 @@
     function getSchedP() { return new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler(rej).getPlayerScheduleMatrix()); }
     function getStandingsP() { return new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler(rej).getStandingsData()); }
 
-async function loadData(isRefresh = false) {
+  async function loadData(isRefresh = false) {
       const loader = document.getElementById('loader');
       const loaderText = document.getElementById('loaderText');
       loaderText.innerText = isRefresh ? "Refreshing Data..." : "Loading Data...";
@@ -183,9 +230,16 @@ async function loadData(isRefresh = false) {
       try {
         const [settings, sched, standings] = await Promise.all([ getSettingsP(), getSchedP(), getStandingsP() ]);
 
-        if(settings && settings.activeName) {
-            document.getElementById('tourneyLabel').innerText = settings.activeName;
-            document.title = settings.activeName;
+        if(settings) {
+            if(settings.activeName) {
+                document.getElementById('tourneyLabel').innerText = settings.activeName;
+                document.title = settings.activeName;
+            }
+            if(settings.theme === 'cherry_blossom') {
+                document.body.className = 'cherry-blossom';
+            } else {
+                document.body.className = '';
+            }
         }
 
         globalSchedule = sched;

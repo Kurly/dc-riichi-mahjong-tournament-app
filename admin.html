@@ -121,7 +121,13 @@
               <div style="font-size:0.8em; color:#7f8c8d; margin-top:5px;">If set to 0, cut triggers manually or immediately.</div>
           </div>
       </div>
-
+<div style="margin-top:15px; background:#f9f9f9; padding:10px; border-radius:8px; border:1px solid #eee;">
+          <label style="margin-top: 5px;">Player Portal Theme</label>
+          <select id="setTheme" style="margin-bottom: 5px;">
+              <option value="default">Default (Blue/Grey)</option>
+              <option value="cherry_blossom">Cherry Blossom (Pink/Red)</option>
+          </select>
+      </div>
 <div style="margin-top:15px; background:#ffebee; padding:10px; border-radius:8px; border:1px solid #ffcdd2;">
           <h3 style="margin:0 0 10px 0; color:#c62828; font-size:1em;">Penalty Configuration</h3>
           
@@ -381,6 +387,8 @@ function renderSettings() {
         // Updated to handle Google Sheets boolean conversion safely
         document.getElementById('setPreTourneyEnabled').checked = (String(s.preTourneyEnabled) === "true");
         toggleSetTopCut();
+
+        document.getElementById('setTheme').value = s.theme || 'default';
         
         document.getElementById('linkSheet').href = DATA.url;
         
@@ -777,7 +785,8 @@ function actionSaveSettings() {
             topCutRound: document.getElementById('setTopCutRound').value,
             tiebreakerRule: document.getElementById('setTiebreaker').value,
             preTourneyEnabled: document.getElementById('setPreTourneyEnabled').checked.toString(),
-            rulesetName: document.getElementById('newRuleset').value // Now pulls from the dropdown!
+            rulesetName: document.getElementById('newRuleset').value 
+            theme: document.getElementById('setTheme').value 
         };
         google.script.run.withSuccessHandler(() => { alert("Saved"); refreshAndRender(); }).saveTournamentSettings(d);
     }

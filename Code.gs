@@ -341,7 +341,8 @@ function getFullSettings() {
     tiebreakerRule: read(dataSS, "Tiebreaker_Rule", "split"),
     preTourneyEnabled: read(dataSS, "Pre_Tourney_Enabled", "false"),
     tourneyBegun: read(dataSS, "Tourney_Begun", "false"),
-    activeRuleset: read(dataSS, "Active_Ruleset", "")
+    activeRuleset: read(dataSS, "Active_Ruleset", ""),
+    theme: read(dataSS, "Theme", "default")
   };
   return _cachedSettings;
 }
@@ -358,6 +359,7 @@ function saveTournamentSettings(form) {
   updateSheetSetting(ss, "Top_Cut_Round", form.topCutRound);
   updateSheetSetting(ss, "Tiebreaker_Rule", form.tiebreakerRule);
   updateSheetSetting(ss, "Pre_Tourney_Enabled", form.preTourneyEnabled);
+  updateSheetSetting(ss, "Theme", form.theme);
 
   if (form.rulesetName) {
       updateSheetSetting(ss, "Active_Ruleset", form.rulesetName);
