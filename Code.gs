@@ -662,11 +662,11 @@ function generateNextRound(bucketCount, addSubs) {
       }
     }
 
-    const mode = readSetting(ss, "Pairing_Mode", "scramble");
-    const cutEnabled = readSetting(ss, "Top_Cut_Enabled", "false") === "true";
+const mode = String(readSetting(ss, "Pairing_Mode", "scramble")).toLowerCase();
+    const cutEnabled = String(readSetting(ss, "Top_Cut_Enabled", "false")).toLowerCase() === "true";
     const cutSize = parseInt(readSetting(ss, "Top_Cut_Size", 0));
     const cutRound = parseInt(readSetting(ss, "Top_Cut_Round", 0));
-    let isCutActive = readSetting(ss, "Top_Cut_Active", "false") === "true";
+    let isCutActive = String(readSetting(ss, "Top_Cut_Active", "false")).toLowerCase() === "true";
     let savedCutIDs = readSetting(ss, "Top_Cut_Player_IDs", "").split(",").filter(x => x);
     let buckets = [];
     let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive);
