@@ -785,7 +785,7 @@ function actionSaveSettings() {
             topCutRound: document.getElementById('setTopCutRound').value,
             tiebreakerRule: document.getElementById('setTiebreaker').value,
             preTourneyEnabled: document.getElementById('setPreTourneyEnabled').checked.toString(),
-            rulesetName: document.getElementById('newRuleset').value 
+            rulesetName: document.getElementById('newRuleset').value,
             theme: document.getElementById('setTheme').value 
         };
         google.script.run.withSuccessHandler(() => { alert("Saved"); refreshAndRender(); }).saveTournamentSettings(d);

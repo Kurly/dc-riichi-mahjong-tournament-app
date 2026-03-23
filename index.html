@@ -81,7 +81,7 @@
     td.col-rank { font-weight: bold; color: #999; }
     td.col-name, td.sch-name { color: #2c3e50; border-right: 2px solid #ddd; }
 
-    /* === THEME VARIABLES === */
+/* === THEME VARIABLES === */
     :root {
       --bg-color: #f0f2f5;
       --text-color: #333;
@@ -102,22 +102,13 @@
     }
 
     .cherry-blossom {
+      /* Only modify the core backgrounds and headers */
       --bg-color: #FFEBF0; 
-      --text-color: #C9184A; 
-      --card-bg-color: #FFFBFE; 
-      --header-bg-color: #C9184A; 
-      --header-text-color: #FFFBFE; 
-      --header-subtext-color: #FFCCD5; 
-      --row-hover-bg: #FFCCD5; 
-      --score-pos-color: #FF4D6D; 
-      --score-neg-color: #7B1028; 
-      --row-dnf-bg: #FCE8EB; 
-      --row-dnf-text: #B91C4A; 
-      --badge-bg: #FF4D6D; 
-      --badge-text: #FFFBFE; 
-      --table-border: #FFCCD5;
-      --name-color: #C9184A;
-      --btn-green: #FF4D6D;
+      --header-bg-color: #ffacc7; 
+      --header-text-color: #5a1a3a; 
+      --header-subtext-color: #5a1a3a; 
+      
+      /* All other elements will automatically inherit the standard default colors from :root */
     }
 
     body { background: var(--bg-color); color: var(--text-color); }
