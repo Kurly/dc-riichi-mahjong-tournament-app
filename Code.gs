@@ -695,7 +695,7 @@ const mode = String(readSetting(ss, "Pairing_Mode", "scramble")).toLowerCase();
         if (mode === 'swiss') {
             buckets.push(topPool.sort(() => Math.random() - 0.5)); 
             
-            let remBuckets = Math.max(1, parseInt(bucketCount, 10) - 1);
+            let remBuckets = Math.max(1, parseInt(bucketCount, 10));
             let total = restPool.length;
             let baseSize = Math.floor((total / remBuckets) / 4) * 4;
             let currentIdx = 0;
@@ -731,7 +731,7 @@ const mode = String(readSetting(ss, "Pairing_Mode", "scramble")).toLowerCase();
                 return (sb ? sb.totalScore : -9999) - (sa ? sa.totalScore : -9999);
             });
             
-            let remBuckets = Math.max(1, parseInt(bucketCount, 10) - 1);
+            let remBuckets = Math.max(1, parseInt(bucketCount, 10));
             let total = restPool.length;
             let baseSize = Math.floor((total / remBuckets) / 4) * 4;
             let currentIdx = 0;

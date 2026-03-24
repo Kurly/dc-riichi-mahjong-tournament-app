@@ -186,9 +186,10 @@
       <h2>Generate Pairings</h2>
       <div id="pairStatus" style="margin-bottom:15px; font-weight:normal; color:#555; line-height:1.5;">Checking status...</div>
       
-      <div id="swissOptions" style="display:none; background:#f8f9fa; padding:10px; border-radius:8px; margin-bottom:15px;">
+<div id="swissOptions" style="display:none; background:#f8f9fa; padding:10px; border-radius:8px; margin-bottom:15px;">
           <label>Bucket Configuration</label>
-          <select id="bucketSelect"></select>
+          <select id="bucketSelect" onchange="updateDistributionDisplay()"></select>
+          <div id="bucketDistributionDisplay" style="margin-top:8px; font-size:0.9em; color:#555;"></div>
       </div>
       
       <button class="btn btn-blue" id="btnGenRound" onclick="actionGenerateRound()">Generate Round</button>
@@ -626,12 +627,13 @@ function renderPairingStatus() {
         }).beginTournamentRepair();
     }
 
-    function populateBucketDropdown() {
+function populateBucketDropdown() {
         const sel = document.getElementById('bucketSelect');
         if(!DATA.pairingState.validBuckets) return;
         sel.innerHTML = DATA.pairingState.validBuckets.map(opt => 
             `<option value="${opt.val}" ${opt.val == DATA.pairingState.lastBuckets ? 'selected' : ''}>${opt.label}</option>`
         ).join('');
+        updateDistributionDisplay();
     }
 
     // --- ACTIONS ---
@@ -771,7 +773,51 @@ function renderPairingStatus() {
             refreshAndRender();
         }).generateNextRound(buckets, addSubs);
     }
+function updateDistributionDisplay() {
+        const s = DATA.settings;
+        const ps = DATA.pairingState;
+        const sel = document.getElementById('bucketSelect');
+        const display = document.getElementById('bucketDistributionDisplay');
+        if (!sel || !display || !ps || !s) return;
 
+        const isTopCut = String(s.topCutEnabled) === "true";
+        const cutSize = parseInt(s.topCutSize) || 0;
+        const cutRound = parseInt(s.topCutRound) || 0;
+        let isCutActive = String(s.topCutActive) === "true";
+        let shouldTrigger = (isTopCut && cutSize > 0 && !isCutActive);
+
+        if (shouldTrigger && cutRound > 0) {
+            if (ps.nextRound <= cutRound) shouldTrigger = false;
+        }
+
+        let totalPlayers = ps.playerCount;
+        if (totalPlayers % 4 !== 0) totalPlayers += (4 - (totalPlayers % 4)); 
+        let bCount = parseInt(sel.value) || 1;
+
+        if (isCutActive || shouldTrigger) {
+            let restPoolSize = totalPlayers - cutSize;
+            let baseSize = Math.floor((restPoolSize / bCount) / 4) * 4;
+            let lastBucketSize = restPoolSize - (baseSize * (bCount - 1));
+            
+            let html = `<div style="color:#e67e22; font-weight:bold; margin-bottom:4px;">Top Cut Isolated Bucket: ${cutSize} players</div>`;
+            html += `Remaining ${restPoolSize} players divided into ${bCount} bucket(s):<br>`;
+            if (baseSize === lastBucketSize || bCount === 1) {
+                html += `• ${bCount} bucket(s) of ${baseSize} players.`;
+            } else {
+                html += `• ${bCount - 1} bucket(s) of ${baseSize} players.<br>`;
+                html += `• 1 bucket of ${lastBucketSize} players.`;
+            }
+            display.innerHTML = html;
+        } else {
+            let baseSize = Math.floor((totalPlayers / bCount) / 4) * 4;
+            let lastBucketSize = totalPlayers - (baseSize * (bCount - 1));
+            if (baseSize === lastBucketSize || bCount === 1) {
+                display.innerHTML = `${bCount} bucket(s) of ${baseSize} players each.`;
+            } else {
+                display.innerHTML = `${bCount - 1} bucket(s) of ${baseSize} players.<br>• 1 bucket of ${lastBucketSize} players.`;
+            }
+        }
+    }
 function actionSaveSettings() {
         showBusy("Saving...");
         const d = { 
