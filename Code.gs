@@ -93,7 +93,7 @@ function getInitialAdminData() {
 }
 
 function getScoringUpdateData() {
-  SpreadsheetApp.flush();
+  
   return {
     scoreLog: getScoreLog(),
     allGames: getAllGamesData()
@@ -227,6 +227,8 @@ function switchTournament(fileId) {
   const file = DriveApp.getFileById(fileId);
   updateSheetSetting(master, "Active_Tournament_ID", fileId);
   updateSheetSetting(master, "Active_Tournament_Name", file.getName());
+  clearCache(); 
+  _cachedDataSS = null;
   return "Switched to: " + file.getName();
 }
 
@@ -394,6 +396,7 @@ function saveTournamentSettings(form) {
           }
       }
   }
+  clearCache();
   return "Settings Saved.";
 }
 
@@ -688,13 +691,13 @@ function generateNextRound(bucketCount, addSubs) {
         if(row[0].toString().includes("ROUND")) { inData = true; continue; }
         if(inData && row[1]) {
           let pIds = [row[1], row[2], row[3], row[4]];
-          for(let i=0; i<4; i++) {
-            for(let j=0; j<4; j++) {
-              if(i !== j && historyMap.has(pIds[i])) {
-                  historyMap.get(pIds[i]).add(pIds[j]);
-              }
-            }
-          }
+          // NEW:
+for(let i=0; i<4; i++) {
+  for(let j=i+1; j<4; j++) {
+    if (historyMap.has(pIds[i])) historyMap.get(pIds[i]).add(pIds[j]);
+    if (historyMap.has(pIds[j])) historyMap.get(pIds[j]).add(pIds[i]);
+  }
+}
         }
       }
     }
@@ -743,15 +746,7 @@ function generateNextRound(bucketCount, addSubs) {
             }
             
             let currentIdx = 0;
-            for (let i = 0; i < remBuckets; i++) {
-                let tablesForThisBucket = baseTables + extraTables[i];
-                let size = tablesForThisBucket * 4;
-                
-                if (size > 0) {
-                    buckets.push(restPool.slice(currentIdx, currentIdx + size).sort(() => Math.random() - 0.5));
-                    currentIdx += size;
-                }
-            }
+            buckets.push(...sliceIntoSwissBuckets(restPool, remBuckets));
         } else {
             buckets.push(topPool.sort(() => Math.random() - 0.5));
             buckets.push(restPool.sort(() => Math.random() - 0.5));
@@ -790,15 +785,7 @@ function generateNextRound(bucketCount, addSubs) {
             }
             
             let currentIdx = 0;
-            for (let i = 0; i < remBuckets; i++) {
-                let tablesForThisBucket = baseTables + extraTables[i];
-                let size = tablesForThisBucket * 4;
-                
-                if (size > 0) {
-                    buckets.push(restPool.slice(currentIdx, currentIdx + size).sort(() => Math.random() - 0.5));
-                    currentIdx += size;
-                }
-            }
+            buckets.push(...sliceIntoSwissBuckets(restPool, remBuckets));
         } else {
             buckets.push(topPool.sort(() => Math.random() - 0.5));
             buckets.push(restPool.sort(() => Math.random() - 0.5));
@@ -849,7 +836,7 @@ function generateNextRound(bucketCount, addSubs) {
     output.push(["", "", "", "", "", ""]); 
     pairSheet.getRange(pairSheet.getLastRow() + 1, 1, output.length, 6).setValues(output);
     
-    SpreadsheetApp.flush();
+    
     clearCache();
 
     return { success: true, message: `Generated Round ${round} pairings!` };
@@ -943,7 +930,31 @@ function getScheduleTables() {
   }
   return schedule.reverse();
 }
-
+// ADD THIS HELPER FUNCTION:
+function sliceIntoSwissBuckets(pool, bucketCount) {
+    let buckets = [];
+    let bCount = Math.max(1, parseInt(bucketCount, 10));
+    let totalTables = Math.floor(pool.length / 4);
+    let baseTables = Math.floor(totalTables / bCount);
+    let leftoverTables = totalTables % bCount;
+    
+    // Evenly distribute leftover tables Top/Bottom
+    let extraTables = new Array(bCount).fill(0);
+    for (let k = 0; k < leftoverTables; k++) {
+        if (k % 2 === 0) extraTables[k / 2]++;
+        else extraTables[bCount - 1 - Math.floor(k / 2)]++;
+    }
+    
+    let currentIdx = 0;
+    for (let i = 0; i < bCount; i++) {
+        let size = (baseTables + extraTables[i]) * 4;
+        if (size > 0) {
+            buckets.push(pool.slice(currentIdx, currentIdx + size).sort(() => Math.random() - 0.5));
+            currentIdx += size;
+        }
+    }
+    return buckets;
+}
 /* ==================================================
    6. SCORING & PENALTIES
    ================================================== */
@@ -1020,7 +1031,7 @@ function saveScores(form) {
     if (check.scored && check.rowIndex) { sheet.getRange(check.rowIndex, 1, 1, rowData.length).setValues([rowData]); }
     else { sheet.appendRow(rowData); }
     
-    SpreadsheetApp.flush();
+   
     clearCache(); 
     updateLeaderboardSheet();
     return { success: true, message: check.scored ? "Updated existing score." : "Saved new score." };
@@ -1050,7 +1061,7 @@ function addPenalty(round, table, playerId, points, reason, notes) {
     if (Math.abs(pts) < 1000 && pts !== 0) pts *= 1000;
     sheet.appendRow([new Date(), playerId, pts, reason, round, table, notes]);
     
-    SpreadsheetApp.flush();
+   
     clearCache(); 
     updateLeaderboardSheet();
     return { success: true, message: "Penalty Added." };
