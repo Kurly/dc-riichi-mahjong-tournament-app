@@ -73,6 +73,7 @@
 /* === COLUMN WIDTHS === */
     .col-rank { left: 0; width: 45px; min-width: 45px; max-width: 45px; text-align: center; padding: 0 5px; }
     .col-id { left: 45px; width: 55px; min-width: 55px; max-width: 55px; text-align: center; padding: 0 5px;  }
+    .col-name { left: 100px; text-align: left; min-width: 120px; }
     
     .sch-id { left: 0; width: 55px; min-width: 55px; max-width: 55px; text-align: center; padding: 0 5px;  }
     .sch-name { left: 55px; text-align: left; border-right: 2px solid #2c3e50; min-width: 120px; }
@@ -165,12 +166,12 @@
   </div>
 
 <div class="nav">
+    <button class="btn" onclick="toggleView()" id="btnToggle" style="position: absolute; top: 15px; left: 15px; margin: 0; padding: 8px 12px; font-size: 0.85em; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">View Pairings</button>
     <button class="btn refresh-btn" onclick="actionRefresh()" style="position: absolute; top: 15px; right: 15px; margin: 0; padding: 0; width: 36px; height: 36px; border-radius: 50%; font-size: 1.2em; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" title="Refresh Data">↻</button>
+    
     <div id="tourneyLabel" class="tourney-label">Loading...</div>
     <h2 id="pageTitle" style="margin:0;">Standings</h2>
-    <div style="margin-top: 10px;">
-        <button class="btn" onclick="toggleView()" id="btnToggle" style="margin-top:0;">View Pairings</button>
-    </div>
+    
     <input type="text" class="search" id="search" placeholder="Search name or ID..." onkeyup="filter()">
   </div>
 
