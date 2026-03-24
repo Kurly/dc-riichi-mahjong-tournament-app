@@ -792,8 +792,18 @@ for(let i=0; i<4; i++) {
         }
     }
     else {
-        if (mode === 'swiss') buckets = recalculateSwissBuckets(players, bucketCount);
-        else buckets.push(players.sort(() => Math.random() - 0.5));
+        if (mode === 'swiss') {
+            const standings = getStandingsData();
+            let ranked = players.map(p => {
+                let s = standings.find(x => x.id === p.id);
+                return { ...p, pts: s ? s.totalScore : -9999 };
+            });
+            ranked.sort((a,b) => b.pts - a.pts);
+            buckets.push(...sliceIntoSwissBuckets(ranked, bucketCount));
+        }
+        else {
+            buckets.push(players.sort(() => Math.random() - 0.5));
+        }
     }
     
     updateSheetSetting(ss, "Last_Bucket_Count", bucketCount);
@@ -846,43 +856,7 @@ for(let i=0; i<4; i++) {
     lock.releaseLock();
   }
 }
-function recalculateSwissBuckets(players, bucketCount) {
-    const standings = getStandingsData();
-    let ranked = players.map(p => {
-      let s = standings.find(x => x.id === p.id);
-      return { ...p, pts: s ? s.totalScore : -9999 };
-    });
-    
-    // Sort by points descending to establish the tiers
-    ranked.sort((a,b) => b.pts - a.pts);
-    let buckets = [];
-    let total = ranked.length;
-    let bCountNum = parseInt(bucketCount, 10) || 1;
-    
-    let totalTables = Math.floor(total / 4);
-    let baseTables = Math.floor(totalTables / bCountNum);
-    let leftoverTables = totalTables % bCountNum;
-    
-    // Distribute leftover tables alternating Top, Bottom, Top, Bottom...
-    let extraTables = new Array(bCountNum).fill(0);
-    for (let k = 0; k < leftoverTables; k++) {
-        if (k % 2 === 0) extraTables[k / 2]++;
-        else extraTables[bCountNum - 1 - Math.floor(k / 2)]++;
-    }
-    
-    let currentIdx = 0;
-    for (let i = 0; i < bCountNum; i++) {
-      let tablesForThisBucket = baseTables + extraTables[i];
-      let size = tablesForThisBucket * 4;
-      
-      if (size > 0) {
-          let slice = ranked.slice(currentIdx, currentIdx + size);
-          buckets.push(slice.sort(() => Math.random() - 0.5));
-          currentIdx += size;
-      }
-    }
-    return buckets;
-}
+
 
 function countRepeats(players, historyMap) {
   let repeats = 0;
