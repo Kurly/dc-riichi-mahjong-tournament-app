@@ -591,10 +591,8 @@ function getPairingState() {
   const cutRound = parseInt(sett.topCutRound) || 0;
   let isCutActive = String(readSetting(ss, "Top_Cut_Active", "false")).toLowerCase() === "true";
   
-  let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive);
-  if (shouldTrigger && cutRound > 0) {
-      if ((maxRound + 1) <= cutRound) shouldTrigger = false;
-  }
+  // STRICT CHECK: Only trigger if we have a valid cutRound AND the next round has surpassed it
+  let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive && cutRound > 0 && (maxRound + 1) > cutRound);
 
   let validOptions = [];
   let pCount = players.length;
@@ -701,17 +699,16 @@ function generateNextRound(bucketCount, addSubs) {
       }
     }
 
-const mode = String(readSetting(ss, "Pairing_Mode", "scramble")).toLowerCase();
+    const mode = String(readSetting(ss, "Pairing_Mode", "scramble")).toLowerCase();
     const cutEnabled = String(readSetting(ss, "Top_Cut_Enabled", "false")).toLowerCase() === "true";
     const cutSize = parseInt(readSetting(ss, "Top_Cut_Size", 0));
     const cutRound = parseInt(readSetting(ss, "Top_Cut_Round", 0));
     let isCutActive = String(readSetting(ss, "Top_Cut_Active", "false")).toLowerCase() === "true";
     let savedCutIDs = readSetting(ss, "Top_Cut_Player_IDs", "").split(",").filter(x => x);
     let buckets = [];
-    let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive);
-    if (shouldTrigger && cutRound > 0) {
-        if (round <= cutRound) shouldTrigger = false;
-    }
+    
+    // STRICT CHECK
+    let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive && cutRound > 0 && round > cutRound);
 
     if (shouldTrigger) {
         isCutActive = true;

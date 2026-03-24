@@ -784,11 +784,9 @@ function updateDistributionDisplay() {
         const cutSize = parseInt(s.topCutSize) || 0;
         const cutRound = parseInt(s.topCutRound) || 0;
         let isCutActive = String(s.topCutActive) === "true";
-        let shouldTrigger = (isTopCut && cutSize > 0 && !isCutActive);
-
-        if (shouldTrigger && cutRound > 0) {
-            if (ps.nextRound <= cutRound) shouldTrigger = false;
-        }
+        
+        // STRICT CHECK
+        let shouldTrigger = (isTopCut && cutSize > 0 && !isCutActive && cutRound > 0 && ps.nextRound > cutRound);
 
         let totalPlayers = ps.playerCount;
         if (totalPlayers % 4 !== 0) totalPlayers += (4 - (totalPlayers % 4)); 
