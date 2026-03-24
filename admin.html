@@ -794,28 +794,50 @@ function updateDistributionDisplay() {
         if (totalPlayers % 4 !== 0) totalPlayers += (4 - (totalPlayers % 4)); 
         let bCount = parseInt(sel.value) || 1;
 
+        // Helper to format the top-to-bottom distribution logic
+        const renderDistribution = (poolSize, bucketCount) => {
+            let totalTables = Math.floor(poolSize / 4);
+            let baseTables = Math.floor(totalTables / bucketCount);
+            let leftoverTables = totalTables % bucketCount;
+
+            if (leftoverTables === 0) {
+                return `• ${bucketCount} bucket(s) of ${baseTables * 4} players.`;
+            }
+
+            let extraTables = new Array(bucketCount).fill(0);
+            for (let k = 0; k < leftoverTables; k++) {
+                if (k % 2 === 0) extraTables[k / 2]++;
+                else extraTables[bucketCount - 1 - Math.floor(k / 2)]++;
+            }
+
+            let groups = [];
+            let currentSize = (baseTables + extraTables[0]) * 4;
+            let count = 1;
+            
+            for (let i = 1; i < bucketCount; i++) {
+                let size = (baseTables + extraTables[i]) * 4;
+                if (size === currentSize) {
+                    count++;
+                } else {
+                    groups.push(`• ${count} bucket(s) of ${currentSize} players.`);
+                    currentSize = size;
+                    count = 1;
+                }
+            }
+            groups.push(`• ${count} bucket(s) of ${currentSize} players.`);
+            return groups.join('<br>');
+        };
+
         if (isCutActive || shouldTrigger) {
             let restPoolSize = totalPlayers - cutSize;
-            let baseSize = Math.floor((restPoolSize / bCount) / 4) * 4;
-            let lastBucketSize = restPoolSize - (baseSize * (bCount - 1));
-            
             let html = `<div style="color:#e67e22; font-weight:bold; margin-bottom:4px;">Top Cut Isolated Bucket: ${cutSize} players</div>`;
-            html += `Remaining ${restPoolSize} players divided into ${bCount} bucket(s):<br>`;
-            if (baseSize === lastBucketSize || bCount === 1) {
-                html += `• ${bCount} bucket(s) of ${baseSize} players.`;
-            } else {
-                html += `• ${bCount - 1} bucket(s) of ${baseSize} players.<br>`;
-                html += `• 1 bucket of ${lastBucketSize} players.`;
-            }
+            html += `<div style="margin-bottom:4px;">Remaining ${restPoolSize} players divided into ${bCount} bucket(s) (Top-to-Bottom order):</div>`;
+            html += renderDistribution(restPoolSize, bCount);
             display.innerHTML = html;
         } else {
-            let baseSize = Math.floor((totalPlayers / bCount) / 4) * 4;
-            let lastBucketSize = totalPlayers - (baseSize * (bCount - 1));
-            if (baseSize === lastBucketSize || bCount === 1) {
-                display.innerHTML = `${bCount} bucket(s) of ${baseSize} players each.`;
-            } else {
-                display.innerHTML = `${bCount - 1} bucket(s) of ${baseSize} players.<br>• 1 bucket of ${lastBucketSize} players.`;
-            }
+            let html = `<div style="margin-bottom:4px;">All ${totalPlayers} players divided into ${bCount} bucket(s) (Top-to-Bottom order):</div>`;
+            html += renderDistribution(totalPlayers, bCount);
+            display.innerHTML = html;
         }
     }
 function actionSaveSettings() {

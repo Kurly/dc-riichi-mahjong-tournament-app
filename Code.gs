@@ -585,22 +585,59 @@ function getPairingState() {
     }
   }
 
+  const ss = getDataSS();
+  const cutEnabled = String(sett.topCutEnabled).toLowerCase() === "true";
+  const cutSize = parseInt(sett.topCutSize) || 0;
+  const cutRound = parseInt(sett.topCutRound) || 0;
+  let isCutActive = String(readSetting(ss, "Top_Cut_Active", "false")).toLowerCase() === "true";
+  
+  let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive);
+  if (shouldTrigger && cutRound > 0) {
+      if ((maxRound + 1) <= cutRound) shouldTrigger = false;
+  }
+
   let validOptions = [];
   let pCount = players.length;
+  // Pad total to be divisible by 4 (to account for potential SUBs)
   if (pCount % 4 !== 0) pCount += (4 - (pCount % 4));
-  for (let b = 1; b <= pCount / 4; b++) {
-    let baseSize = Math.floor((pCount / b) / 4) * 4;
-    if (baseSize < 4 && b > 1) break; 
-    let lastBucketSize = pCount - (baseSize * (b - 1));
-    if (lastBucketSize >= 4 && lastBucketSize % 4 === 0) {
-        let label = (b === 1) ? `1 Bucket (${pCount})` : (baseSize === lastBucketSize) ? `${b} Buckets (${baseSize} each)` : `${b} Buckets (${b-1}x${baseSize}, 1x${lastBucketSize})`;
-        validOptions.push({ val: b, label: label });
+
+  // Remove the Top Cut size from the bucket math if it is active/triggering
+  let poolSize = (isCutActive || shouldTrigger) ? pCount - cutSize : pCount;
+  if (poolSize < 4) poolSize = pCount; // Fallback if math gets weird
+  
+  let totalTables = Math.floor(poolSize / 4);
+
+  for (let b = 1; b <= totalTables; b++) {
+    let baseTables = Math.floor(totalTables / b);
+    if (baseTables === 0) break; // Bucket would be empty, stop adding options
+
+    let leftoverTables = totalTables % b;
+    let label = "";
+    
+    // Label prefix based on whether Top Cut is active
+    if (isCutActive || shouldTrigger) {
+         label = (b === 1) ? `1 Gen Bucket (${poolSize})` : `${b} Gen Buckets`;
+    } else {
+         label = (b === 1) ? `1 Bucket (${poolSize})` : `${b} Buckets`;
     }
+
+    // Add size summary to the label
+    if (b > 1) {
+        if (leftoverTables === 0) {
+            label += ` (${baseTables * 4} players each)`;
+        } else {
+            let maxB = (baseTables + 1) * 4;
+            let minB = baseTables * 4;
+            label += ` (Split of ${maxB} & ${minB})`;
+        }
+    }
+    
+    validOptions.push({ val: b, label: label });
   }
 
   return {
     nextRound: maxRound + 1, totalRounds: sett.roundCount, playerCount: players.length,
-    validBuckets: validOptions, lastBuckets: Number(readSetting(getDataSS(), "Last_Bucket_Count", 1))
+    validBuckets: validOptions, lastBuckets: Number(readSetting(ss, "Last_Bucket_Count", 1))
   };
 }
 
@@ -692,16 +729,27 @@ const mode = String(readSetting(ss, "Pairing_Mode", "scramble")).toLowerCase();
         updateSheetSetting(ss, "Top_Cut_Player_IDs", topPool.map(p=>p.id).join(","));
         updateSheetSetting(ss, "Top_Cut_Active", "true");
         
-        if (mode === 'swiss') {
-            buckets.push(topPool.sort(() => Math.random() - 0.5)); 
-            
+    if (mode === 'swiss') {
+            buckets.push(topPool.sort(() => Math.random() - 0.5));
             let remBuckets = Math.max(1, parseInt(bucketCount, 10));
             let total = restPool.length;
-            let baseSize = Math.floor((total / remBuckets) / 4) * 4;
+            
+            let totalTables = Math.floor(total / 4);
+            let baseTables = Math.floor(totalTables / remBuckets);
+            let leftoverTables = totalTables % remBuckets;
+            
+            // Distribute leftover tables alternating Top, Bottom, Top, Bottom...
+            let extraTables = new Array(remBuckets).fill(0);
+            for (let k = 0; k < leftoverTables; k++) {
+                if (k % 2 === 0) extraTables[k / 2]++;
+                else extraTables[remBuckets - 1 - Math.floor(k / 2)]++;
+            }
+            
             let currentIdx = 0;
             for (let i = 0; i < remBuckets; i++) {
-                let size = baseSize;
-                if (i === remBuckets - 1) size = total - currentIdx;
+                let tablesForThisBucket = baseTables + extraTables[i];
+                let size = tablesForThisBucket * 4;
+                
                 if (size > 0) {
                     buckets.push(restPool.slice(currentIdx, currentIdx + size).sort(() => Math.random() - 0.5));
                     currentIdx += size;
@@ -730,14 +778,25 @@ const mode = String(readSetting(ss, "Pairing_Mode", "scramble")).toLowerCase();
                 let sa = getStats(a.id); let sb = getStats(b.id);
                 return (sb ? sb.totalScore : -9999) - (sa ? sa.totalScore : -9999);
             });
-            
             let remBuckets = Math.max(1, parseInt(bucketCount, 10));
             let total = restPool.length;
-            let baseSize = Math.floor((total / remBuckets) / 4) * 4;
+            
+            let totalTables = Math.floor(total / 4);
+            let baseTables = Math.floor(totalTables / remBuckets);
+            let leftoverTables = totalTables % remBuckets;
+            
+            // Distribute leftover tables alternating Top, Bottom, Top, Bottom...
+            let extraTables = new Array(remBuckets).fill(0);
+            for (let k = 0; k < leftoverTables; k++) {
+                if (k % 2 === 0) extraTables[k / 2]++;
+                else extraTables[remBuckets - 1 - Math.floor(k / 2)]++;
+            }
+            
             let currentIdx = 0;
             for (let i = 0; i < remBuckets; i++) {
-                let size = baseSize;
-                if (i === remBuckets - 1) size = total - currentIdx;
+                let tablesForThisBucket = baseTables + extraTables[i];
+                let size = tablesForThisBucket * 4;
+                
                 if (size > 0) {
                     buckets.push(restPool.slice(currentIdx, currentIdx + size).sort(() => Math.random() - 0.5));
                     currentIdx += size;
@@ -812,20 +871,31 @@ function recalculateSwissBuckets(players, bucketCount) {
     
     // Sort by points descending to establish the tiers
     ranked.sort((a,b) => b.pts - a.pts);
-    
     let buckets = [];
     let total = ranked.length;
     let bCountNum = parseInt(bucketCount, 10) || 1;
-    let baseSize = Math.floor((total / bCountNum) / 4) * 4;
-    let currentIdx = 0;
     
+    let totalTables = Math.floor(total / 4);
+    let baseTables = Math.floor(totalTables / bCountNum);
+    let leftoverTables = totalTables % bCountNum;
+    
+    // Distribute leftover tables alternating Top, Bottom, Top, Bottom...
+    let extraTables = new Array(bCountNum).fill(0);
+    for (let k = 0; k < leftoverTables; k++) {
+        if (k % 2 === 0) extraTables[k / 2]++;
+        else extraTables[bCountNum - 1 - Math.floor(k / 2)]++;
+    }
+    
+    let currentIdx = 0;
     for (let i = 0; i < bCountNum; i++) {
-      let size = (i === bCountNum - 1) ? total - currentIdx : baseSize;
-      let slice = ranked.slice(currentIdx, currentIdx + size);
-      currentIdx += size;
+      let tablesForThisBucket = baseTables + extraTables[i];
+      let size = tablesForThisBucket * 4;
       
-      // Randomly shuffle the players within this specific score bucket
-      buckets.push(slice.sort(() => Math.random() - 0.5));
+      if (size > 0) {
+          let slice = ranked.slice(currentIdx, currentIdx + size);
+          buckets.push(slice.sort(() => Math.random() - 0.5));
+          currentIdx += size;
+      }
     }
     return buckets;
 }
