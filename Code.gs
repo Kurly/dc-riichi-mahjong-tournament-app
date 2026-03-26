@@ -1097,7 +1097,7 @@ function getStandingsData() {
   const ss = getDataSS();
   const sData = getCachedSheetData("Scores");
   const pData = getCachedSheetData("Penalties");
-  const pMap = getPlayerMap();
+  const playersList = getPlayers(); // Use full list to get ARA ID
   
   let startRound = parseInt(readSetting(ss, "Top_Cut_Start_Round", "0"));
   let topIDsRaw = String(readSetting(ss, "Top_Cut_Player_IDs", ""));
@@ -1106,10 +1106,10 @@ function getStandingsData() {
   let hasCut = (startRound > 0 && topIDs.length > 0);
 
   let stats = {};
-  Object.keys(pMap).forEach(id => { 
-      stats[id] = { 
-          id: id, name: pMap[id], totalPts: 0, postCutPts: 0, preCutPts: 0,
-          played: 0, pen: 0, isDNF: pMap[id].startsWith("[DNF]"), isTopCut: topSet.has(id)
+  playersList.forEach(p => { 
+      stats[p.id] = { 
+          id: p.id, name: p.name, araId: p.araId || "", totalPts: 0, postCutPts: 0, preCutPts: 0,
+          played: 0, pen: 0, isDNF: p.name.startsWith("[DNF]"), isTopCut: topSet.has(p.id)
       }; 
   });
 
@@ -1155,7 +1155,7 @@ function getStandingsData() {
   });
 
   const formatP = (p, rank) => ({
-      rank: p.isDNF ? "-" : rank, id: p.id, name: p.name,
+      rank: p.isDNF ? "-" : rank, id: p.id, name: p.name, araId: p.araId,
       displayScore: p.totalPts, auxScore: p.postCutPts, totalScore: p.totalPts,
       played: p.played, penalties: p.pen, isDNF: p.isDNF, isTopCut: p.isTopCut
   });
@@ -1167,13 +1167,16 @@ function updateLeaderboardSheet() {
   const ss = getDataSS();
   let sheet = ss.getSheetByName("Leaderboard");
   if (!sheet) sheet = ss.insertSheet("Leaderboard");
-  
   const standings = getStandingsData();
-  const rows = standings.map(p => [ p.rank, p.id, p.name, p.played, p.displayScore ]);
+  
+  // Added p.araId to the row output
+  const rows = standings.map(p => [ p.rank, p.id, p.name, p.araId, p.played, p.displayScore ]);
   
   sheet.clear();
-  const output = [["Rank", "Player ID", "Name", "Games Played", "Total Points"], ...rows];
-  sheet.getRange(1, 1, output.length, 5).setValues(output);
+  // Added "ARA ID" to the headers
+  const output = [["Rank", "Player ID", "Name", "ARA ID", "Games Played", "Total Points"], ...rows];
+  // Updated range width to 6 columns
+  sheet.getRange(1, 1, output.length, 6).setValues(output);
 }
 /* ==================================================
    8. SWAP & EDITING TOOLS
