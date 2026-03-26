@@ -1396,7 +1396,6 @@ function beginTournamentRepair() {
 
       let moves = [];
       let subsAdded = [];
-
       tables.forEach(t => {
           for (let s = 0; s < 4; s++) {
               if (missingIds.includes(String(t.seats[s]))) {
@@ -1404,7 +1403,6 @@ function beginTournamentRepair() {
               }
           }
       });
-
       for (let i = 0; i < tables.length; i++) {
           for (let j = 0; j < 4; j++) {
               if (tables[i].seats[j] === null) {
@@ -1420,7 +1418,8 @@ function beginTournamentRepair() {
                               tables[i].seats[j] = movingPid;
                               tables[k].seats[s] = null;
                               
-                              moves.push(`${pName} moved from Table ${tables[k].tableId} -> Table ${i + 1}`);
+                              // STORE AS OBJECT TO CAPTURE FINAL ID LATER
+                              moves.push({ pName: pName, from: tables[k].tableId, toObj: tables[i] });
                               found = true;
                               break;
                           }
@@ -1432,7 +1431,6 @@ function beginTournamentRepair() {
       }
 
       tables = tables.filter(t => t.seats.some(seat => seat !== null));
-
       if (tables.length > 0) {
           let lastTable = tables[tables.length - 1];
           let currentSubs = players.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
@@ -1446,7 +1444,9 @@ function beginTournamentRepair() {
                       let subName = "SUB " + currentSubs;
                       playersSheet.appendRow([subId, subName, true]); 
                       lastTable.seats[j] = subId;
-                      subsAdded.push(`${subName} added to Table ${tables.length}`);
+                      
+                      // STORE AS OBJECT TO CAPTURE FINAL ID LATER
+                      subsAdded.push({ subName: subName, toObj: lastTable });
                   }
               }
               SpreadsheetApp.flush();
@@ -1454,10 +1454,10 @@ function beginTournamentRepair() {
       }
 
       pairSheet.getRange(round1StartIndex + 2, 1, round1EndIndex - (round1StartIndex + 2), 6).clearContent();
-      
       let output = [];
       let tCounter = 1;
       tables.forEach(t => {
+          t.finalId = tCounter; // SAVE THE EXACT ASSIGNED NUMBER TO THE OBJECT
           output.push([tCounter++, t.seats[0], t.seats[1], t.seats[2], t.seats[3], t.bucket]);
       });
       output.push(["", "", "", "", "", ""]);
@@ -1469,13 +1469,17 @@ function beginTournamentRepair() {
       updateSheetSetting(ss, "Tourney_Begun", "true");
       SpreadsheetApp.flush();
       clearCache();
-
+      
       let finalMessage = "Tournament begun and Round 1 pairings repaired!";
       if (moves.length > 0) {
-          finalMessage += "\n\n--- Player Movements ---\n" + moves.join("\n");
+          // MAP THE FINAL ASSIGNED IDs TO THE LOG STRINGS
+          let moveLogs = moves.map(m => `${m.pName} moved from Table ${m.from} -> Table ${m.toObj.finalId}`);
+          finalMessage += "\n\n--- Player Movements ---\n" + moveLogs.join("\n");
       }
       if (subsAdded.length > 0) {
-          finalMessage += "\n\n--- Subs Added ---\n" + subsAdded.join("\n");
+          // MAP THE FINAL ASSIGNED IDs TO THE LOG STRINGS
+          let subLogs = subsAdded.map(s => `${s.subName} added to Table ${s.toObj.finalId}`);
+          finalMessage += "\n\n--- Subs Added ---\n" + subLogs.join("\n");
       }
 
       return { success: true, message: finalMessage };
