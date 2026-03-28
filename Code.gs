@@ -663,9 +663,7 @@ function generateNextRound(bucketCount, addSubs) {
     }
 
     let allPlayers = getPlayers();
-    // Filter out DNF players so they are not assigned to tables
     let players = allPlayers.filter(p => !p.name.toUpperCase().startsWith("[DNF]"));
-    
     if (addSubs && players.length % 4 !== 0) {
       const subsNeeded = 4 - (players.length % 4);
       let subCount = allPlayers.filter(p => p.name.toUpperCase().startsWith("SUB")).length;
@@ -691,13 +689,12 @@ function generateNextRound(bucketCount, addSubs) {
         if(row[0].toString().includes("ROUND")) { inData = true; continue; }
         if(inData && row[1]) {
           let pIds = [row[1], row[2], row[3], row[4]];
-          // NEW:
-for(let i=0; i<4; i++) {
-  for(let j=i+1; j<4; j++) {
-    if (historyMap.has(pIds[i])) historyMap.get(pIds[i]).add(pIds[j]);
-    if (historyMap.has(pIds[j])) historyMap.get(pIds[j]).add(pIds[i]);
-  }
-}
+          for(let i=0; i<4; i++) {
+            for(let j=i+1; j<4; j++) {
+              if (historyMap.has(pIds[i])) historyMap.get(pIds[i]).add(pIds[j]);
+              if (historyMap.has(pIds[j])) historyMap.get(pIds[j]).add(pIds[i]);
+            }
+          }
         }
       }
     }
@@ -710,7 +707,6 @@ for(let i=0; i<4; i++) {
     let savedCutIDs = readSetting(ss, "Top_Cut_Player_IDs", "").split(",").filter(x => x);
     let buckets = [];
     
-    // STRICT CHECK
     let shouldTrigger = (cutEnabled && cutSize > 0 && !isCutActive && cutRound > 0 && round > cutRound);
 
     if (shouldTrigger) {
@@ -729,23 +725,9 @@ for(let i=0; i<4; i++) {
         updateSheetSetting(ss, "Top_Cut_Player_IDs", topPool.map(p=>p.id).join(","));
         updateSheetSetting(ss, "Top_Cut_Active", "true");
         
-    if (mode === 'swiss') {
+        if (mode === 'swiss') {
             buckets.push(topPool.sort(() => Math.random() - 0.5));
             let remBuckets = Math.max(1, parseInt(bucketCount, 10));
-            let total = restPool.length;
-            
-            let totalTables = Math.floor(total / 4);
-            let baseTables = Math.floor(totalTables / remBuckets);
-            let leftoverTables = totalTables % remBuckets;
-            
-            // Distribute leftover tables alternating Top, Bottom, Top, Bottom...
-            let extraTables = new Array(remBuckets).fill(0);
-            for (let k = 0; k < leftoverTables; k++) {
-                if (k % 2 === 0) extraTables[k / 2]++;
-                else extraTables[remBuckets - 1 - Math.floor(k / 2)]++;
-            }
-            
-            let currentIdx = 0;
             buckets.push(...sliceIntoSwissBuckets(restPool, remBuckets));
         } else {
             buckets.push(topPool.sort(() => Math.random() - 0.5));
@@ -759,11 +741,6 @@ for(let i=0; i<4; i++) {
         if (mode === 'swiss') {
             const standings = getStandingsData();
             const getStats = (pid) => standings.find(x => x.id === pid);
-            
-            topPool.sort((a,b) => {
-                let sa = getStats(a.id); let sb = getStats(b.id);
-                return (sb ? sb.auxScore : -9999) - (sa ? sa.auxScore : -9999);
-            });
             buckets.push(topPool.sort(() => Math.random() - 0.5)); 
             
             restPool.sort((a,b) => {
@@ -771,20 +748,6 @@ for(let i=0; i<4; i++) {
                 return (sb ? sb.totalScore : -9999) - (sa ? sa.totalScore : -9999);
             });
             let remBuckets = Math.max(1, parseInt(bucketCount, 10));
-            let total = restPool.length;
-            
-            let totalTables = Math.floor(total / 4);
-            let baseTables = Math.floor(totalTables / remBuckets);
-            let leftoverTables = totalTables % remBuckets;
-            
-            // Distribute leftover tables alternating Top, Bottom, Top, Bottom...
-            let extraTables = new Array(remBuckets).fill(0);
-            for (let k = 0; k < leftoverTables; k++) {
-                if (k % 2 === 0) extraTables[k / 2]++;
-                else extraTables[remBuckets - 1 - Math.floor(k / 2)]++;
-            }
-            
-            let currentIdx = 0;
             buckets.push(...sliceIntoSwissBuckets(restPool, remBuckets));
         } else {
             buckets.push(topPool.sort(() => Math.random() - 0.5));
@@ -810,20 +773,24 @@ for(let i=0; i<4; i++) {
 
     let roundTables = [];
     let tableCounter = 1;
+    let totalRepeats = 0;
+
     buckets.forEach((bucket, bIdx) => {
       let pool = [...bucket];
       let bucketChar = String.fromCharCode(65 + bIdx); 
       let allowRepeats = (isCutActive && bIdx === 0);
+      let bucketTables = [];
+      let backtracks = 0;
+      let maxBacktracks = 50;
 
       while(pool.length >= 4) {
         let bestTable = null;
         let minRepeats = 999;
         
         if (allowRepeats) {
-            bestTable = pool.slice(0, 4);
+          bestTable = pool.slice(0, 4);
+          minRepeats = 0;
         } else {
-            // Randomly shuffle the remaining bucket pool up to 1000 times 
-            // to find a table combination where no one has played each other
             for(let attempt=0; attempt<1000; attempt++) {
               for (let i = pool.length - 1; i > 0; i--) {
                   const j = Math.floor(Math.random() * (i + 1));
@@ -836,9 +803,21 @@ for(let i=0; i<4; i++) {
             }
         }
         
+        if (minRepeats > 0 && bucketTables.length > 0 && backtracks < maxBacktracks) {
+            let lastTable = bucketTables.pop();
+            pool.push(...lastTable.players);
+            backtracks++;
+            continue;
+        }
+        
+        bucketTables.push({ players: bestTable, repeats: minRepeats });
         pool = pool.filter(p => !bestTable.includes(p));
-        roundTables.push([tableCounter++, bestTable[0].id, bestTable[1].id, bestTable[2].id, bestTable[3].id, bucketChar]);
       }
+
+      bucketTables.forEach(tObj => {
+          totalRepeats += tObj.repeats;
+          roundTables.push([tableCounter++, tObj.players[0].id, tObj.players[1].id, tObj.players[2].id, tObj.players[3].id, bucketChar]);
+      });
     });
 
     let output = [[`--- ROUND ${round} (${mode.toUpperCase()}) ---`, "", "", "", "", ""]];
@@ -846,10 +825,12 @@ for(let i=0; i<4; i++) {
     output.push(["", "", "", "", "", ""]); 
     pairSheet.getRange(pairSheet.getLastRow() + 1, 1, output.length, 6).setValues(output);
     
-    
     clearCache();
-
-    return { success: true, message: `Generated Round ${round} pairings!` };
+    let msg = `Generated Round ${round} pairings!`;
+    if (totalRepeats > 0) {
+        msg += `\n⚠️ WARNING: Unavoidable repeat matchups detected (${totalRepeats} past pairs matched again).`;
+    }
+    return { success: true, message: msg };
   } catch(e) {
     return { success: false, message: "Error generating round: " + e.message };
   } finally {
