@@ -750,11 +750,14 @@ function populateBucketDropdown() {
     let lastBucketConfig = 1;
     let lastSubsConfig = false;
 
+
     function actionGenerateRound(isRedo = false) {
+        const isRedoAction = (isRedo === true);
+        
         const buckets = document.getElementById('bucketSelect') ? document.getElementById('bucketSelect').value : 1;
         let addSubs = false;
         
-        if (!isRedo) {
+        if (!isRedoAction) {
             if (DATA.pairingState.nextRound === 1 && DATA.players.length % 4 !== 0) {
                 const subsNeeded = 4 - (DATA.players.length % 4);
                 if (confirm(`Player count (${DATA.players.length}) is not divisible by 4.\n\nWould you like to auto-add ${subsNeeded} SUB player(s) to fill the seats?`)) {
