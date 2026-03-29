@@ -747,31 +747,61 @@ function populateBucketDropdown() {
         });
     }
 
-    function actionGenerateRound() {
-        const buckets = document.getElementById('bucketSelect').value || 1;
+    let lastBucketConfig = 1;
+    let lastSubsConfig = false;
+
+    function actionGenerateRound(isRedo = false) {
+        const buckets = document.getElementById('bucketSelect') ? document.getElementById('bucketSelect').value : 1;
         let addSubs = false;
         
-        if (DATA.pairingState.nextRound === 1 && DATA.players.length % 4 !== 0) {
-            const subsNeeded = 4 - (DATA.players.length % 4);
-            if (confirm(`Player count (${DATA.players.length}) is not divisible by 4.\n\nWould you like to auto-add ${subsNeeded} SUB player(s) to fill the seats?`)) {
-                addSubs = true;
+        if (!isRedo) {
+            if (DATA.pairingState.nextRound === 1 && DATA.players.length % 4 !== 0) {
+                const subsNeeded = 4 - (DATA.players.length % 4);
+                if (confirm(`Player count (${DATA.players.length}) is not divisible by 4.\n\nWould you like to auto-add ${subsNeeded} SUB player(s) to fill the seats?`)) {
+                    addSubs = true;
+                } else {
+                    return; 
+                }
             } else {
-                return; 
+                if(!confirm(`Generate Round ${DATA.pairingState.nextRound}?`)) return;
             }
-        } else {
-            if(!confirm(`Generate Round ${DATA.pairingState.nextRound}?`)) return;
+            lastBucketConfig = buckets;
+            lastSubsConfig = addSubs;
         }
         
         showBusy("Generating...");
         google.script.run.withSuccessHandler(res => {
+            hideBusy();
             if (res.success === false) {
                 alert(res.message);
-                hideBusy();
                 return;
             }
-            alert(res.message);
-            refreshAndRender();
-        }).generateNextRound(buckets, addSubs);
+
+            if (res.repeats > 0 && res.conflicts && res.conflicts.length > 0) {
+                document.getElementById('conflictList').innerHTML = res.conflicts.join('<br><hr style="border-top:1px solid #eee; margin:5px 0;">');
+                document.getElementById('conflictOverlay').style.display = 'block';
+                document.getElementById('conflictModal').style.display = 'block';
+            } else {
+                alert(res.message);
+                refreshAndRender();
+            }
+        }).generateNextRound(lastBucketConfig, lastSubsConfig);
+    }
+
+    function acceptConflicts() {
+        document.getElementById('conflictOverlay').style.display = 'none';
+        document.getElementById('conflictModal').style.display = 'none';
+        alert("Pairings accepted with repeats.");
+        refreshAndRender();
+    }
+
+    function redoPairings() {
+        document.getElementById('conflictOverlay').style.display = 'none';
+        document.getElementById('conflictModal').style.display = 'none';
+        showBusy("Deleting and re-generating...");
+        google.script.run.withSuccessHandler(() => {
+            actionGenerateRound(true);
+        }).deleteLastRound(DATA.pairingState.nextRound);
     }
 function updateDistributionDisplay() {
         const s = DATA.settings;
@@ -1219,6 +1249,16 @@ function renderPenalties() {
       <h3 style="margin-top:0; color:#e67e22;">Resolve Tie</h3>
       <p style="color:#555; font-size:0.95em; margin-bottom:15px;">Select the player closest to the starting East seat:</p>
       <div id="tieOptions" style="display:flex; flex-direction:column; gap:10px;"></div>
+  </div>
+  <div id="conflictOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9998;"></div>
+  <div id="conflictModal" class="card" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); z-index:9999; box-shadow:0 10px 30px rgba(0,0,0,0.2); width:90%; max-width:500px; text-align:center;">
+      <h3 style="margin-top:0; color:#e74c3c;">⚠️ Repeat Matchups Detected</h3>
+      <p style="color:#555; font-size:0.95em; margin-bottom:15px;">The pairing algorithm could not avoid repeat matchups for the following tables:</p>
+      <div id="conflictList" style="text-align:left; background:#f9f9f9; padding:10px; border-radius:6px; max-height:200px; overflow-y:auto; margin-bottom:15px; font-weight:bold; color:#2c3e50; font-size:0.9em; border:1px solid #eee;"></div>
+      <div style="display:flex; gap:10px;">
+          <button class="btn btn-blue" onclick="acceptConflicts()">Accept Pairings</button>
+          <button class="btn btn-orange" onclick="redoPairings()">Redo Pairings</button>
+      </div>
   </div>
 </body>
 </html>

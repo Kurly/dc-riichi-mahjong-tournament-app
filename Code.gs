@@ -774,6 +774,7 @@ function generateNextRound(bucketCount, addSubs) {
     let roundTables = [];
     let tableCounter = 1;
     let totalRepeats = 0;
+    let conflictDetails = [];
 
     buckets.forEach((bucket, bIdx) => {
       let pool = [...bucket];
@@ -816,7 +817,24 @@ function generateNextRound(bucketCount, addSubs) {
 
       bucketTables.forEach(tObj => {
           totalRepeats += tObj.repeats;
-          roundTables.push([tableCounter++, tObj.players[0].id, tObj.players[1].id, tObj.players[2].id, tObj.players[3].id, bucketChar]);
+          let currentTableId = tableCounter++;
+          roundTables.push([currentTableId, tObj.players[0].id, tObj.players[1].id, tObj.players[2].id, tObj.players[3].id, bucketChar]);
+
+          if (tObj.repeats > 0 && !allowRepeats) {
+              let tableConflicts = [];
+              for(let i=0; i<4; i++) {
+                  for(let j=i+1; j<4; j++) {
+                      let p1 = tObj.players[i];
+                      let p2 = tObj.players[j];
+                      if (historyMap.has(p1.id) && historyMap.get(p1.id).has(p2.id)) {
+                          tableConflicts.push(`${p1.name} & ${p2.name}`);
+                      }
+                  }
+              }
+              if (tableConflicts.length > 0) {
+                  conflictDetails.push(`Table ${currentTableId}: ${tableConflicts.join(' | ')}`);
+              }
+          }
       });
     });
 
@@ -827,17 +845,37 @@ function generateNextRound(bucketCount, addSubs) {
     
     clearCache();
     let msg = `Generated Round ${round} pairings!`;
-    if (totalRepeats > 0) {
-        msg += `\n⚠️ WARNING: Unavoidable repeat matchups detected (${totalRepeats} past pairs matched again).`;
-    }
-    return { success: true, message: msg };
+    return { success: true, message: msg, repeats: totalRepeats, conflicts: conflictDetails };
   } catch(e) {
     return { success: false, message: "Error generating round: " + e.message };
   } finally {
     lock.releaseLock();
   }
 }
-
+function deleteLastRound(roundNum) {
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (e) { return false; }
+  try {
+    const ss = getDataSS();
+    const sheet = ss.getSheetByName("Pairings");
+    if (!sheet) return false;
+    const data = sheet.getDataRange().getValues();
+    let startRow = -1;
+    for (let i = data.length - 1; i >= 0; i--) {
+      if (data[i][0] && data[i][0].toString().toUpperCase().includes(`--- ROUND ${roundNum} (`)) {
+        startRow = i;
+        break;
+      }
+    }
+    if (startRow !== -1) {
+      sheet.getRange(startRow + 1, 1, sheet.getLastRow() - startRow, 6).clearContent();
+    }
+    clearCache();
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 function countRepeats(players, historyMap) {
   let repeats = 0;
