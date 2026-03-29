@@ -780,52 +780,77 @@ function generateNextRound(bucketCount, addSubs) {
       let pool = [...bucket];
       let bucketChar = String.fromCharCode(65 + bIdx); 
       let allowRepeats = (isCutActive && bIdx === 0);
-      let bucketTables = [];
-      let backtracks = 0;
-      let maxBacktracks = 50;
 
-      while(pool.length >= 4) {
-        let bestTable = null;
-        let minRepeats = 999;
-        
-        if (allowRepeats) {
-          bestTable = pool.slice(0, 4);
-          minRepeats = 0;
-        } else {
-            for(let attempt=0; attempt<1000; attempt++) {
-              for (let i = pool.length - 1; i > 0; i--) {
-                  const j = Math.floor(Math.random() * (i + 1));
-                  [pool[i], pool[j]] = [pool[j], pool[i]];
-              }
-              let candidates = pool.slice(0, 4);
-              let repeats = countRepeats(candidates, historyMap);
-              if (repeats === 0) { bestTable = candidates; minRepeats = 0; break; }
-              if (repeats < minRepeats) { minRepeats = repeats; bestTable = candidates; }
-            }
-        }
-        
-        if (minRepeats > 0 && bucketTables.length > 0 && backtracks < maxBacktracks) {
-            let lastTable = bucketTables.pop();
-            pool.push(...lastTable.players);
-            backtracks++;
-            continue;
-        }
-        
-        bucketTables.push({ players: bestTable, repeats: minRepeats });
-        pool = pool.filter(p => !bestTable.includes(p));
+      for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
       }
 
-      bucketTables.forEach(tObj => {
-          totalRepeats += tObj.repeats;
-          let currentTableId = tableCounter++;
-          roundTables.push([currentTableId, tObj.players[0].id, tObj.players[1].id, tObj.players[2].id, tObj.players[3].id, bucketChar]);
+      let bucketTables = [];
+      for (let i = 0; i < pool.length; i += 4) {
+          bucketTables.push(pool.slice(i, i + 4));
+      }
 
-          if (tObj.repeats > 0 && !allowRepeats) {
+      if (!allowRepeats && bucketTables.length > 1) {
+          const getBucketRepeats = (tables) => {
+              let total = 0;
+              for (let t of tables) total += countRepeats(t, historyMap);
+              return total;
+          };
+
+          let currentRepeats = getBucketRepeats(bucketTables);
+          let iterations = 0;
+          const maxIterations = 5000;
+
+          while (currentRepeats > 0 && iterations < maxIterations) {
+              let conflictTableIndices = [];
+              for (let i = 0; i < bucketTables.length; i++) {
+                  if (countRepeats(bucketTables[i], historyMap) > 0) {
+                      conflictTableIndices.push(i);
+                  }
+              }
+
+              if (conflictTableIndices.length === 0) break;
+
+              let t1Idx = conflictTableIndices[Math.floor(Math.random() * conflictTableIndices.length)];
+              let t2Idx = Math.floor(Math.random() * bucketTables.length);
+
+              while (t1Idx === t2Idx) {
+                  t2Idx = Math.floor(Math.random() * bucketTables.length);
+              }
+
+              let p1Idx = Math.floor(Math.random() * 4);
+              let p2Idx = Math.floor(Math.random() * 4);
+
+              let temp = bucketTables[t1Idx][p1Idx];
+              bucketTables[t1Idx][p1Idx] = bucketTables[t2Idx][p2Idx];
+              bucketTables[t2Idx][p2Idx] = temp;
+
+              let newRepeats = getBucketRepeats(bucketTables);
+
+              if (newRepeats <= currentRepeats) {
+                  currentRepeats = newRepeats;
+              } else {
+                  let tempBack = bucketTables[t1Idx][p1Idx];
+                  bucketTables[t1Idx][p1Idx] = bucketTables[t2Idx][p2Idx];
+                  bucketTables[t2Idx][p2Idx] = tempBack;
+              }
+              iterations++;
+          }
+      }
+
+      bucketTables.forEach(tPlayers => {
+          let tRepeats = allowRepeats ? 0 : countRepeats(tPlayers, historyMap);
+          totalRepeats += tRepeats;
+          let currentTableId = tableCounter++;
+          roundTables.push([currentTableId, tPlayers[0].id, tPlayers[1].id, tPlayers[2].id, tPlayers[3].id, bucketChar]);
+
+          if (tRepeats > 0 && !allowRepeats) {
               let tableConflicts = [];
               for(let i=0; i<4; i++) {
                   for(let j=i+1; j<4; j++) {
-                      let p1 = tObj.players[i];
-                      let p2 = tObj.players[j];
+                      let p1 = tPlayers[i];
+                      let p2 = tPlayers[j];
                       if (historyMap.has(p1.id) && historyMap.get(p1.id).has(p2.id)) {
                           tableConflicts.push(`${p1.name} & ${p2.name}`);
                       }
