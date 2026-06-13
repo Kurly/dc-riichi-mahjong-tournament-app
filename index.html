@@ -111,7 +111,13 @@
       
       /* All other elements will automatically inherit the standard default colors from :root */
     }
-
+    .charm-city {
+      /* Only modify the core backgrounds and headers */
+      --header-bg-color: #ff8a00;  
+      --header-text-color: #006600; 
+      --header-subtext-color: #333333; 
+      /* All other elements will automatically inherit the standard default colors from :root */
+    }
     body { background: var(--bg-color); color: var(--text-color); }
     .card { background: var(--card-bg-color); }
     .nav { background: var(--header-bg-color); color: var(--header-text-color); }
@@ -166,13 +172,16 @@
   </div>
 
 <div class="nav">
-    <button class="btn" onclick="toggleView()" id="btnToggle" style="position: absolute; top: 15px; left: 15px; margin: 0; padding: 8px 12px; font-size: 0.85em; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">View Pairings</button>
-    <button class="btn refresh-btn" onclick="actionRefresh()" style="position: absolute; top: 15px; right: 15px; margin: 0; padding: 0; width: 36px; height: 36px; border-radius: 50%; font-size: 1.2em; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2);" title="Refresh Data">↻</button>
-    
     <div id="tourneyLabel" class="tourney-label">Loading...</div>
     <h2 id="pageTitle" style="margin:0;">Standings</h2>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%;">
+    <button class="btn" onclick="toggleView()" id="btnToggle" style="margin-left: 0; padding: 8px 12px; font-size: 0.85em; box-shadow: 0 2px 4px rgba(0,0,0,0.2); white-space: nowrap;">View Pairings</button>
     
-    <input type="text" class="search" id="search" placeholder="Search name or ID..." onkeyup="filter()">
+    <input type="text" class="search" id="search" placeholder="Search name or ID..." onkeyup="filter()" style="flex: 1; max-width: 500px;">
+    
+    <button class="btn refresh-btn" onclick="actionRefresh()" style="margin-right: 0; padding: 0; width: 36px; height: 36px; border-radius: 50%; font-size: 1.2em; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2); flex-shrink: 0;" title="Refresh Data">↻</button>
+</div>
+    
   </div>
 
   <div id="viewStandings">
@@ -229,6 +238,9 @@
             }
             if(settings.theme === 'cherry_blossom') {
                 document.body.className = 'cherry-blossom';
+            }
+            if(settings.theme === 'charm_city') {
+                document.body.className = 'charm-city';
             } else {
                 document.body.className = '';
             }
