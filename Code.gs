@@ -4,11 +4,15 @@
 
 function doGet(e) {
   const portal = e.parameter.portal;
+  const page = e.parameter.page;
   let template, title;
 
-  if (portal === 'admin') {
+  if (portal === 'admin' || page === 'admin') {
     template = HtmlService.createTemplateFromFile('admin');
     title = '🏆 Tournament Admin';
+  } else if (portal === 'register' || page === 'register') {
+    template = HtmlService.createTemplateFromFile('register');
+    title = 'Player Registration';
   } else {
     template = HtmlService.createTemplateFromFile('index');
     title = 'Player Portal';
