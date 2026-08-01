@@ -1540,3 +1540,11 @@ function beginTournamentRepair() {
       lock.releaseLock();
     }
 }
+function getActiveTournamentName() {
+  try {
+    const settings = getFullSettings();
+    return settings.activeName || "Active Tournament";
+  } catch (e) {
+    return "Active Tournament";
+  }
+}
